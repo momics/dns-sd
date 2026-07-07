@@ -68,7 +68,15 @@ type MembershipV4 = Awaited<ReturnType<Deno.DatagramConn["joinMulticastV4"]>>;
 type MembershipV6 = Awaited<ReturnType<Deno.DatagramConn["joinMulticastV6"]>>;
 
 /** How long a sent datagram stays eligible for echo suppression. */
-const ECHO_WINDOW_MS = 2000;
+// Self-echo suppression (dropping our own looped-back multicast datagrams) is
+// duplicated in the sibling Node transport at packages/dns-sd-node/src/transport.ts
+// (`sentEchoes` + `fingerprint()`). The two intentionally differ: this one keys on
+// exact bytes and caps by entry count; Node keys on an FNV-1a fingerprint and caps
+// by TTL. Keep both in sync. If a third transport is ever added, extract the logic
+// into a shared pure `EchoSuppressor` in dns-sd-shared instead of copying it again.
+// The TTL window is aligned with Node's SELF_ECHO_TTL_MS (5000ms); there is no
+// load-bearing reason for them to differ.
+const ECHO_WINDOW_MS = 5000;
 /** Cap on tracked sends, in case loopback echoes never arrive to consume them. */
 const ECHO_MAX_ENTRIES = 256;
 
