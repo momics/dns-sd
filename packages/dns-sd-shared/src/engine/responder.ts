@@ -57,6 +57,12 @@ export class Responder {
   private started = false;
   private closed = false;
 
+  // ── Response aggregation (RFC 6762 §6) ─────────────────────────────────────
+  /** Answers buffered for the current aggregation window (record references). */
+  private pendingAnswers: ResourceRecord[] = [];
+  /** The single pending-flush timer, or null when no window is open. */
+  private flushTimer: ReturnType<typeof setTimeout> | null = null;
+
   private ready!: Promise<void>;
   private resolveReady!: () => void;
   private rejectReady!: (err: Error) => void;
@@ -349,6 +355,23 @@ export class Responder {
     if (!this.resolvedReady()) return;
     const answers = this.answersFor(message);
     if (answers.length === 0) return;
+
+    // A probe query (proposed records in the Authority Section) demands an
+    // immediate defensive response (RFC 6762 §6: probes time out in ~250ms),
+    // so it must bypass the aggregation window.
+    if (message.authorities.length > 0) {
+      this.sendAnswers(answers);
+      return;
+    }
+
+    // Otherwise buffer the answers and flush after a random aggregation delay
+    // so that answers accumulated within one window coalesce into a single
+    // response (RFC 6762 §6).
+    this.bufferAnswers(answers);
+  }
+
+  /** Send a set of answers plus their additionals as one response. */
+  private sendAnswers(answers: ResourceRecord[]): void {
     this.ctx.send({
       header: responseHeader(),
       questions: [],
@@ -356,6 +379,34 @@ export class Responder {
       authorities: [],
       additionals: this.additionalsFor(answers),
     });
+  }
+
+  /** Add answers to the pending window, opening a flush timer if needed. */
+  private bufferAnswers(answers: ResourceRecord[]): void {
+    for (const answer of answers) {
+      if (!this.pendingAnswers.includes(answer)) {
+        this.pendingAnswers.push(answer);
+      }
+    }
+    if (this.flushTimer !== null) return;
+    const { responseAggregationMinMs: min, responseAggregationMaxMs: max } =
+      this.ctx.timing;
+    const delay = min + Math.random() * Math.max(0, max - min);
+    const timer = setTimeout(() => {
+      this.timers.delete(timer);
+      this.flushTimer = null;
+      if (!this.closed) this.flushAnswers();
+    }, delay);
+    this.timers.add(timer);
+    this.flushTimer = timer;
+  }
+
+  /** Send all buffered answers as one aggregated response. */
+  private flushAnswers(): void {
+    const answers = this.pendingAnswers;
+    this.pendingAnswers = [];
+    if (this.closed || answers.length === 0) return;
+    this.sendAnswers(answers);
   }
 
   /** Called by the engine for every decoded response. */
@@ -439,8 +490,7 @@ export class Responder {
 
   private reprobe(): void {
     // Cancel current schedule and re-run the lifecycle under a fresh name.
-    for (const t of this.timers) clearTimeout(t);
-    this.timers.clear();
+    this.clearTimers();
     this.rename();
   }
 
@@ -476,9 +526,20 @@ export class Responder {
   private close(): void {
     if (this.closed) return;
     this.closed = true;
+    this.clearTimers();
+    this.ctx.unregister(this);
+  }
+
+  /**
+   * Cancel every scheduled timer and reset the response-aggregation state.
+   * Shared by {@link close} and {@link reprobe} so a re-probe never leaves a
+   * dead flush timer behind (which would silently disable all future answers).
+   */
+  private clearTimers(): void {
     for (const t of this.timers) clearTimeout(t);
     this.timers.clear();
-    this.ctx.unregister(this);
+    this.flushTimer = null;
+    this.pendingAnswers = [];
   }
 
   private schedule(delayMs: number, fn: () => void): void {
