@@ -149,10 +149,10 @@ Plain `string` inputs to `advertise` are UTF-8 encoded (RFC 6763 §6.5).
 | ----------------------------- | ------------------- | --------------------- | -------------------------- |
 | Browse / advertise            | ✅                  | ✅                    | ✅                         |
 | TXT records                   | ✅ (3 states)       | ✅ (3 states)         | ⚠️ bare-key vs empty merged |
-| Subtypes (`_sub`)             | ✅                  | ⚠️ accepted, not filtered | ⚠️ accepted, ignored     |
-| Custom `host`                 | ✅                  | ⚠️ limited            | ❌ chosen by OS            |
+| Subtypes (`_sub`)             | ✅                  | ⚠️ accepted, not filtered | ⚠️ advertise needs API 35 |
+| Custom `host`                 | ✅                  | ⚠️ limited            | ⚠️ numeric IP, API 34+    |
 | Custom `domain`               | ✅ (non-`local`)    | ⚠️ limited            | ❌ `local` only            |
-| Host/address resolution on browse | ✅              | ✅                    | ✅                         |
+| Host/address resolution on browse | ✅              | ✅                    | ✅ (all addresses, API 34+) |
 | Browse timeout / abort        | ✅ (shared layer)   | ✅                    | ✅                         |
 | `removed` (isActive:false)    | ✅                  | ✅                    | ✅                         |
 
@@ -163,10 +163,18 @@ instance through `NetService` (Bonjour), emitting `found` first and then
 `resolved` once host name, port and IP addresses are available. TXT data is
 delivered throughout.
 
-**Android:** `NsdManager` owns the published host name and only supports the
-`local` domain, so `host`/`domain` on `advertise` are ignored. It also cannot
-represent a bare TXT key distinctly from an empty value, so both are surfaced as
-`true`. Subtypes are accepted for API parity but not honoured.
+**Android:** discovery resolves each instance to its port and **all** of its IP
+addresses. On Android 14+ (API 34) the plugin uses
+`NsdManager.registerServiceInfoCallback`, which returns every address and streams
+later address/TXT changes as `updated` events; older versions fall back to the
+deprecated `resolveService` (single address). A custom advertise `host` is
+honoured when it is a numeric IP literal on Android 14+ (via `setHostAddresses`);
+a custom host *name* is always chosen by the OS, and only the `local` domain is
+supported. `NsdManager` cannot represent a bare TXT key distinctly from an empty
+value, so both are surfaced as `true`, and advertised TXT values are encoded as
+UTF-8 (the public `setAttribute` accepts only `String` values). Subtypes on
+`advertise` require `setSubtypes` (Android 15 / API 35); at the current
+`compileSdk` (34) they are accepted for API parity but not registered.
 
 ## Testing
 

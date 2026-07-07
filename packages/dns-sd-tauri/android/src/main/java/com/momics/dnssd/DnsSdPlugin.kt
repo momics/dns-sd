@@ -2,8 +2,10 @@ package com.momics.dnssd
 
 import android.app.Activity
 import android.content.Context
+import android.net.InetAddresses
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
@@ -16,6 +18,7 @@ import app.tauri.plugin.Channel
 import app.tauri.plugin.JSObject
 import org.json.JSONArray
 import org.json.JSONObject
+import java.net.InetAddress
 import java.util.concurrent.ConcurrentHashMap
 
 @InvokeArg
@@ -57,7 +60,7 @@ class AdvertiseServiceSpec {
     var port: Long = 0
     var host: String? = null
     var domain: String? = null
-    // Accepted for API parity; NsdManager registration does not support subtypes.
+    // Accepted for API parity; honoured only on Android 15+ (see advertise_start).
     var subtypes: List<String>? = null
     var txt: JSObject? = null
 }
@@ -74,11 +77,26 @@ class AdvertiseStopArgs {
 // unified `kind` (found/resolved/updated/removed) from the `isActive` flag and
 // the presence of a resolved host/port.
 //
-// NsdManager limitations (documented in the package README):
-//  - Non-`local` domains and custom hostnames are ignored (a warning is logged).
+// Resolution parity:
+//  - On Android 14+ (API 34) discovery uses NsdManager.registerServiceInfoCallback,
+//    which resolves each instance to ALL of its IP addresses and keeps them (and
+//    the TXT record) live — matching the desktop `mdns-sd` and iOS `NetService`
+//    backends, which also return every address.
+//  - Below API 34 the deprecated resolveService is used, which resolves a single
+//    address only (an OS limitation on those versions).
+//
+// Remaining NsdManager limitations (documented in the package README):
+//  - Non-`local` domains are ignored (a warning is logged).
+//  - A custom advertise `host` is honoured only when it is a numeric IP literal
+//    on Android 14+ (via setHostAddresses); a custom host *name* is always chosen
+//    by the OS.
+//  - Subtypes are only honoured on advertise on Android 15+ (setSubtypes); the
+//    installed compile SDK (34) predates that API, so they are accepted for API
+//    parity but not registered.
 //  - TXT attributes are exposed as a `Map<String, byte[]>`; a key with no value
 //    is reported as the bare-key form (`true`) — NsdManager cannot distinguish a
-//    bare key from an explicit empty value.
+//    bare key from an explicit empty value. On advertise, values are encoded as
+//    UTF-8 (NsdManager's public setAttribute only accepts String values).
 @TauriPlugin
 class DnsSdPlugin(private val activity: Activity): Plugin(activity) {
     private var nextBrowseId: Long = 1L
@@ -90,6 +108,8 @@ class DnsSdPlugin(private val activity: Activity): Plugin(activity) {
         val listener: NsdManager.DiscoveryListener,
         val channel: Channel,
         val services: ConcurrentHashMap<String, NsdServiceInfo> = ConcurrentHashMap(),
+        // Live resolution callbacks (API 34+), keyed by service key, for cleanup.
+        val infoCallbacks: ConcurrentHashMap<String, NsdManager.ServiceInfoCallback> = ConcurrentHashMap(),
         val timeoutHandler: Handler? = null,
         val timeoutRunnable: Runnable? = null
     )
@@ -108,24 +128,43 @@ class DnsSdPlugin(private val activity: Activity): Plugin(activity) {
     private fun nsd(): NsdManager? = activity.getSystemService(Context.NSD_SERVICE) as? NsdManager
     private fun nowMs(): Long = System.currentTimeMillis()
 
+    // Collect every resolved IP address for a service, deduplicated and sorted so
+    // the emitted list is stable and matches the desktop/iOS backends. Uses the
+    // full address list on Android 14+, falling back to the single legacy host.
+    @Suppress("DEPRECATION")
+    private fun collectAddresses(info: NsdServiceInfo): List<String> {
+        val out = LinkedHashSet<String>()
+        if (Build.VERSION.SDK_INT >= 34) {
+            for (addr in info.hostAddresses) {
+                addr.hostAddress?.substringBefore('%')?.let { out.add(it) }
+            }
+        }
+        if (out.isEmpty()) {
+            info.host?.hostAddress?.substringBefore('%')?.let { out.add(it) }
+        }
+        return out.sorted()
+    }
+
+    @Suppress("DEPRECATION")
     private fun emitService(session: BrowseSession, info: NsdServiceInfo, isActive: Boolean) {
+        val addresses = collectAddresses(info)
+
         val serviceData = JSObject()
         serviceData.put("name", info.serviceName)
         serviceData.put("fullName", info.serviceName + "." + info.serviceType + ".local.")
-        serviceData.put("host", info.host?.hostName ?: info.host?.hostAddress)
+        serviceData.put("host", info.host?.hostName ?: addresses.firstOrNull())
         serviceData.put("port", info.port)
         serviceData.put("serviceType", info.serviceType + ".local.")
         serviceData.put("protocol", if (info.serviceType.contains("_udp")) "udp" else "tcp")
         serviceData.put("domain", "local")
-        
-        // Create proper JSON arrays
-        val subtypesArray = org.json.JSONArray()
+
+        val subtypesArray = JSONArray()
         serviceData.put("subtypes", subtypesArray)
-        
-        val addressesArray = org.json.JSONArray()
-        info.host?.hostAddress?.let { addressesArray.put(it) }
+
+        val addressesArray = JSONArray()
+        for (address in addresses) addressesArray.put(address)
         serviceData.put("addresses", addressesArray)
-        
+
         val txt = JSObject()
         for ((key, value) in info.attributes) {
             if (value == null || value.isEmpty()) {
@@ -143,18 +182,18 @@ class DnsSdPlugin(private val activity: Activity): Plugin(activity) {
         serviceData.put("txt", txt)
         serviceData.put("isActive", isActive)
         serviceData.put("lastSeenMs", nowMs())
-        
+
         val payload = JSObject()
         payload.put("browseId", session.id)
         payload.put("service", serviceData)
-        
+
         try {
             session.channel.send(payload)
         } catch (e: Exception) {
             Log.e("dns-sd", "Error sending service event: ${e.message}")
         }
     }
-    
+
     private fun emitBrowseStopped(session: BrowseSession, reason: String) {
         val payload = JSObject()
         payload.put("browseId", session.id)
@@ -166,11 +205,62 @@ class DnsSdPlugin(private val activity: Activity): Plugin(activity) {
         }
     }
 
+    // Idempotent removal shared by the discovery listener and the resolution
+    // callback (both can report a loss). Emits `removed` only on the first call.
+    private fun handleLost(browseId: Long, key: String, fallback: NsdServiceInfo?) {
+        val session = browseMap[browseId] ?: return
+        val previous = session.services.remove(key)
+        val callback = session.infoCallbacks.remove(key)
+        callback?.let { cb ->
+            try { session.manager.unregisterServiceInfoCallback(cb) } catch (_: Exception) {}
+        }
+        // Nothing left to remove -> the other path already handled it; don't
+        // emit a duplicate `removed` event.
+        if (previous == null && callback == null) return
+        val info = previous ?: fallback ?: return
+        emitService(session, info, false)
+    }
+
+    // Resolve + track a discovered instance on Android 14+, delivering all of its
+    // addresses and any later TXT/address changes as `updated` events.
+    private fun startInfoCallback(browseId: Long, key: String, serviceInfo: NsdServiceInfo) {
+        val session = browseMap[browseId] ?: return
+        if (session.infoCallbacks.containsKey(key)) return
+        val callback = object : NsdManager.ServiceInfoCallback {
+            override fun onServiceInfoCallbackRegistrationFailed(errorCode: Int) {
+                Log.w("dns-sd", "ServiceInfoCallback registration failed ($errorCode) for $key")
+                browseMap[browseId]?.infoCallbacks?.remove(key)
+            }
+            override fun onServiceUpdated(info: NsdServiceInfo) {
+                val current = browseMap[browseId] ?: return
+                current.services[key] = info
+                emitService(current, info, true)
+            }
+            override fun onServiceLost() {
+                handleLost(browseId, key, null)
+            }
+            override fun onServiceInfoCallbackUnregistered() {
+                browseMap[browseId]?.infoCallbacks?.remove(key)
+            }
+        }
+        session.infoCallbacks[key] = callback
+        try {
+            session.manager.registerServiceInfoCallback(serviceInfo, activity.mainExecutor, callback)
+        } catch (e: Exception) {
+            session.infoCallbacks.remove(key)
+            Log.e("dns-sd", "registerServiceInfoCallback failed for $key: ${e.message}")
+        }
+    }
+
     private fun stopBrowseSession(session: BrowseSession, reason: String) {
         browseMap.remove(session.id)
         session.timeoutHandler?.let { handler ->
             session.timeoutRunnable?.let { handler.removeCallbacks(it) }
         }
+        for (cb in session.infoCallbacks.values) {
+            try { session.manager.unregisterServiceInfoCallback(cb) } catch (_: Exception) {}
+        }
+        session.infoCallbacks.clear()
         try {
             session.manager.stopServiceDiscovery(session.listener)
         } catch (_: Exception) {}
@@ -178,6 +268,7 @@ class DnsSdPlugin(private val activity: Activity): Plugin(activity) {
     }
 
     @Command
+    @Suppress("DEPRECATION")
     fun browse_start(invoke: Invoke) {
         val manager = nsd() ?: return invoke.reject("NsdManager unavailable")
         val args = invoke.parseArgs(BrowseStartArgs::class.java)
@@ -199,38 +290,42 @@ class DnsSdPlugin(private val activity: Activity): Plugin(activity) {
             Log.w("dns-sd", "Android NSD ignores non-local domain '$domain'")
         }
         val listener = object : NsdManager.DiscoveryListener {
-            override fun onStartDiscoveryFailed(serviceType: String, errorCode: Int) { 
+            override fun onStartDiscoveryFailed(serviceType: String, errorCode: Int) {
                 browseMap[browseId]?.let { stopBrowseSession(it, "error:$errorCode") }
             }
-            override fun onStopDiscoveryFailed(serviceType: String, errorCode: Int) { 
+            override fun onStopDiscoveryFailed(serviceType: String, errorCode: Int) {
                 browseMap[browseId]?.let { stopBrowseSession(it, "error:$errorCode") }
             }
             override fun onDiscoveryStarted(serviceType: String) {}
-            override fun onDiscoveryStopped(serviceType: String) { 
+            override fun onDiscoveryStopped(serviceType: String) {
                 browseMap[browseId]?.let { stopBrowseSession(it, "search-stopped") }
             }
             override fun onServiceFound(serviceInfo: NsdServiceInfo) {
                 // Filter mismatch if user provided explicit type
                 if (typeRaw != null && serviceInfo.serviceType != serviceType) return
                 val key = serviceInfo.serviceName + serviceInfo.serviceType
-                browseMap[browseId]?.services?.put(key, serviceInfo)
-                manager.resolveService(serviceInfo, object : NsdManager.ResolveListener {
-                    override fun onServiceResolved(resolved: NsdServiceInfo) {
-                        // Update cache with resolved info
-                        browseMap[browseId]?.services?.put(key, resolved)
-                        browseMap[browseId]?.let { emitService(it, resolved, true) }
-                    }
-                    override fun onResolveFailed(serviceInfo: NsdServiceInfo, errorCode: Int) { 
-                        browseMap[browseId]?.let { emitService(it, serviceInfo, false) }
-                    }
-                })
+                val session = browseMap[browseId] ?: return
+                session.services[key] = serviceInfo
+                if (Build.VERSION.SDK_INT >= 34) {
+                    // Resolve + track all addresses and live changes.
+                    startInfoCallback(browseId, key, serviceInfo)
+                } else {
+                    manager.resolveService(serviceInfo, object : NsdManager.ResolveListener {
+                        override fun onServiceResolved(resolved: NsdServiceInfo) {
+                            browseMap[browseId]?.let {
+                                it.services[key] = resolved
+                                emitService(it, resolved, true)
+                            }
+                        }
+                        override fun onResolveFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {
+                            browseMap[browseId]?.let { emitService(it, serviceInfo, false) }
+                        }
+                    })
+                }
             }
             override fun onServiceLost(serviceInfo: NsdServiceInfo) {
                 val key = serviceInfo.serviceName + serviceInfo.serviceType
-                // Retrieve the original resolved service info from our cache
-                val originalInfo = browseMap[browseId]?.services?.remove(key)
-                // Use the original info if available, otherwise use what we have
-                browseMap[browseId]?.let { emitService(it, originalInfo ?: serviceInfo, false) }
+                handleLost(browseId, key, serviceInfo)
             }
         }
         val handler = if (timeoutMs > 0) Handler(Looper.getMainLooper()) else null
@@ -261,6 +356,10 @@ class DnsSdPlugin(private val activity: Activity): Plugin(activity) {
             session.timeoutHandler?.let { handler ->
                 session.timeoutRunnable?.let { handler.removeCallbacks(it) }
             }
+            for (cb in session.infoCallbacks.values) {
+                try { session.manager.unregisterServiceInfoCallback(cb) } catch (_: Exception) {}
+            }
+            session.infoCallbacks.clear()
             try { session.manager.stopServiceDiscovery(session.listener) } catch (_: Exception) {}
             emitBrowseStopped(session, "stopped")
         }
@@ -281,9 +380,6 @@ class DnsSdPlugin(private val activity: Activity): Plugin(activity) {
                 Log.w("dns-sd", "Android NSD ignores non-local domain '$it' for advertise_start")
             }
         }
-        args.service?.host?.let {
-            Log.w("dns-sd", "Android NSD ignores custom host '$it' for advertise_start")
-        }
         val typeLabel = if (typeRaw.startsWith("_")) typeRaw else "_${typeRaw}"
         val protoLabel = if (protoRaw.lowercase() == "udp") "_udp" else "_tcp"
         val serviceType = "$typeLabel.$protoLabel"
@@ -292,20 +388,34 @@ class DnsSdPlugin(private val activity: Activity): Plugin(activity) {
             this.serviceType = serviceType
             setPort(port)
         }
+        // Honour a custom host only when it is a numeric IP literal on Android 14+,
+        // where setHostAddresses lets us advertise explicit A/AAAA records. A custom
+        // host *name* is always chosen by the OS and cannot be overridden.
+        args.service?.host?.let { host ->
+            val applied = if (host.isNotBlank() && Build.VERSION.SDK_INT >= 34 && InetAddresses.isNumericAddress(host)) {
+                info.setHostAddresses(listOf(InetAddresses.parseNumericAddress(host)))
+                true
+            } else false
+            if (!applied) {
+                Log.w("dns-sd", "Android NSD ignores custom host '$host' (only a numeric IP on Android 14+ is honoured)")
+            }
+        }
         args.service?.txt?.let { txt ->
             val keys = txt.keys()
             while (keys.hasNext()) {
                 val key = keys.next()
                 val value = txt.opt(key)
+                // NsdManager's public setAttribute only accepts String values, so
+                // byte payloads are encoded as UTF-8. A null value is a bare key.
                 when (value) {
-                    null, JSONObject.NULL -> info.setAttribute(key, ByteArray(0))
+                    null, JSONObject.NULL -> info.setAttribute(key, null as String?)
                     is JSONArray -> {
                         val bytes = ByteArray(value.length()) { idx ->
                             (value.optInt(idx, 0) and 0xFF).toByte()
                         }
-                        info.setAttribute(key, bytes)
+                        info.setAttribute(key, String(bytes, Charsets.UTF_8))
                     }
-                    is Boolean -> if (value) info.setAttribute(key, ByteArray(0))
+                    is Boolean -> if (value) info.setAttribute(key, null as String?)
                     else -> info.setAttribute(key, value.toString())
                 }
             }

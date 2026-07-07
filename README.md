@@ -52,7 +52,7 @@ Either way, callers get the exact same `browse` / `advertise` API.
 | macOS    | Node.js, Deno, Tauri (desktop) | ✅ full | raw UDP multicast (see [interop notes](#real-network--cross-runtime-verification)) |
 | Windows  | Node.js, Deno, Tauri (desktop) | ✅ full | raw UDP multicast |
 | iOS      | Tauri               | ✅ full | via `NWBrowser`/`NWListener` + `NetService` resolution |
-| Android  | Tauri               | ⚠️ partial | via `NsdManager`; see limitations below |
+| Android  | Tauri               | ✅ full | via `NsdManager` (all addresses + live updates on Android 14+); see notes below |
 
 **Mobile limitations** (honest — these follow directly from the OS APIs, see the
 [Tauri package README](./packages/dns-sd-tauri/README.md#platform-matrix--limitations)):
@@ -62,10 +62,17 @@ Either way, callers get the exact same `browse` / `advertise` API.
   addresses through `NetService` (Bonjour). Browse events are emitted as `found`
   first, then `resolved` once host/port/addresses are available — matching every
   other platform.
-- **Android (`NsdManager`)** owns the published host name and only supports the
-  `local` domain, so a custom `host`/`domain` on `advertise` is ignored. It
-  cannot represent a bare TXT key distinctly from an empty value, so both are
-  surfaced as `true`. Subtypes are accepted for API parity but **not honoured**.
+- **Android (`NsdManager`)** resolves each discovered instance to its port and
+  **all** of its IP addresses. On Android 14+ (API 34) it uses
+  `registerServiceInfoCallback`, which returns every address and streams live
+  address/TXT changes as `updated` events; on older versions the legacy resolver
+  returns a single address. A custom advertise `host` is honoured when it is a
+  numeric IP literal on Android 14+ (via `setHostAddresses`); a custom host
+  *name*, and the non-`local` domain, are still chosen/limited by the OS.
+  `NsdManager` also cannot represent a bare TXT key distinctly from an empty
+  value (both surface as `true`), and subtypes on `advertise` require Android 15+
+  (API 35), so at the current compile SDK they are accepted for API parity but
+  not registered.
 
 ## Quick start
 
