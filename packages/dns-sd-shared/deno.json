@@ -11,11 +11,12 @@
   "exports": {
     ".": "./src/index.ts",
     "./wire": "./src/wire/index.ts",
-    "./testing": "./src/testing/index.ts"
+    "./testing": "./src/testing/index.ts",
+    "./testing/harness": "./src/testing/harness.ts"
   },
   "tasks": {
     "test": "deno run test/run.ts",
-    "check": "deno check src/index.ts src/wire/index.ts src/testing/index.ts test/run.ts"
+    "check": "deno check src/index.ts src/wire/index.ts src/testing/index.ts src/testing/harness.ts test/run.ts"
   },
   "publish": {
     "include": ["src/", "README.md", "deno.json"]

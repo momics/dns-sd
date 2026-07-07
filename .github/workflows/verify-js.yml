@@ -1,7 +1,15 @@
 name: Verify (JS)
 
-# Reusable workflow: fmt/lint/typecheck plus the full test matrix for the
-# TypeScript packages, under BOTH Deno and Node.js. Called by:
+# Reusable workflow: fmt/lint/typecheck plus the full TypeScript test suite,
+# under BOTH Deno and Node.js. Every TS package registers, asserts and reports
+# through the shared cross-runtime harness (packages/dns-sd-shared/src/testing/
+# harness.ts), so a single command per runtime runs the whole suite with
+# identical output:
+#
+#   Deno  →  deno task test
+#   Node  →  npm run test:node
+#
+# Called by:
 #   - ci.yml       (on push / pull_request)
 #   - publish.yml  (before publishing a tag, against the tag's SHA)
 #
@@ -15,16 +23,21 @@ permissions:
   contents: read
 
 jobs:
-  # ── Formatting, linting and typecheck — under Deno ───────────────────────────
+  # ── Formatting, linting and typecheck ────────────────────────────────────────
   verify:
     name: Verify (fmt · lint · typecheck)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
+
+      - run: npm ci
 
       - name: deno fmt --check
         run: deno fmt --check
@@ -32,12 +45,19 @@ jobs:
       - name: deno lint
         run: deno lint
 
-      - name: deno check (typecheck source + tests)
+      - name: deno check (typecheck source + tests, all TS packages)
         run: |
           deno task check
           deno task check:deno-runtime
+          deno task check:tauri
 
-  # ── Test suite under Deno ────────────────────────────────────────────────────
+      - name: Build shared package (dependency for tsc typecheck)
+        run: npm run build --workspace @momics/dns-sd-shared
+
+      - name: tsc typecheck (all workspaces)
+        run: npm run typecheck
+
+  # ── Full TypeScript suite under Deno (single command) ────────────────────────
   test-deno:
     name: Test (Deno)
     runs-on: ubuntu-latest
@@ -46,12 +66,15 @@ jobs:
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
-      - name: Run shared tests + conformance suite under Deno
+      # Runs the shared, dns-sd-deno and tauri guest-js suites through the shared
+      # harness. Real-network conformance is gated behind DNS_SD_NETWORK_TESTS
+      # and reported as skipped here.
+      - name: Run the whole TS suite under Deno
         run: deno task test
 
-  # ── Test suite under Node.js (build with tsc, then run compiled output) ──────
+  # ── Full TypeScript suite under Node.js (single command) ─────────────────────
   test-node:
-    name: Test (Node.js · shared)
+    name: Test (Node.js)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -59,43 +82,8 @@ jobs:
         with:
           node-version: 24
       - run: npm ci
-      - name: Typecheck under tsc
-        run: npm run typecheck
-      - name: Run shared tests + conformance suite under Node
-        run: npm run test:node --workspace @momics/dns-sd-shared
-
-  # ── Node.js runtime package (@momics/dns-sd-node) ────────────────────────────
-  test-node-runtime:
-    name: Test (Node.js · dns-sd-node)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-      - run: npm ci
-      # Build the shared package first so the Node adapter can consume it.
-      - name: Build @momics/dns-sd-shared
-        run: npm run build --workspace @momics/dns-sd-shared
-      - name: Typecheck @momics/dns-sd-node
-        run: npm run typecheck --workspace @momics/dns-sd-node
-      # Transport unit tests always run. The real-network conformance suite is
-      # gated behind DNS_SD_NETWORK_TESTS and skipped here, since GitHub-hosted
-      # runners don't provide a working multicast loopback path.
-      - name: Run @momics/dns-sd-node transport tests
-        run: npm run test:node --workspace @momics/dns-sd-node
-
-  # ── @momics/dns-sd-deno transport tests (Deno) ───────────────────────────────
-  # Unit tests only: they use unicast loopback and never require multicast
-  # routing, so they're safe on headless runners. The real-multicast conformance
-  # suite is gated behind DNS_SD_NETWORK_TESTS=1 and is NOT run here.
-  test-deno-runtime:
-    name: Test (dns-sd-deno transport)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: denoland/setup-deno@v2
-        with:
-          deno-version: v2.x
-      - name: Run dns-sd-deno unit tests under Deno
-        run: deno task test:deno-runtime
+      # tsc-builds each package, then runs the shared, dns-sd-node and tauri
+      # guest-js suites through the shared harness. Real-network conformance is
+      # gated behind DNS_SD_NETWORK_TESTS and reported as skipped here.
+      - name: Run the whole TS suite under Node
+        run: npm run test:node

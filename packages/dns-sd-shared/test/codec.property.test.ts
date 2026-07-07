@@ -21,7 +21,7 @@
  * @module
  */
 
-import { assert, test } from "./harness.ts";
+import { assert, test } from "../src/testing/harness.ts";
 import {
   decodeMessage,
   DnsClass,

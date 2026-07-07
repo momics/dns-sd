@@ -17,6 +17,10 @@
     "./testing": {
       "import": "./dist/src/testing/index.js",
       "types": "./dist/src/testing/index.d.ts"
+    },
+    "./testing/harness": {
+      "import": "./dist/src/testing/harness.js",
+      "types": "./dist/src/testing/harness.d.ts"
     }
   },
   "scripts": {

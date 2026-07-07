@@ -8,7 +8,7 @@
  * @module
  */
 
-import { assert, assertEquals, test } from "./harness.ts";
+import { assert, assertEquals, test } from "../src/testing/harness.ts";
 import { dnsSdOverAdapter } from "../src/api.ts";
 import type {
   AdapterAdvertiseHandle,

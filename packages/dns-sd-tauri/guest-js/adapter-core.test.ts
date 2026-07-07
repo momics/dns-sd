@@ -9,7 +9,10 @@
  * @module
  */
 
-import { assertEquals } from "@std/assert";
+import {
+  assertDeepEquals as assertEquals,
+  test,
+} from "@momics/dns-sd-shared/testing/harness";
 import type { ServiceAnnouncement } from "@momics/dns-sd-shared";
 import {
   createBrowseMessageHandler,
@@ -46,7 +49,7 @@ function collect(): {
   return { events, sink: (e) => events.push(e) };
 }
 
-Deno.test("browse handler: unresolved-then-resolved emits found then resolved then updated", () => {
+test("browse handler: unresolved-then-resolved emits found then resolved then updated", () => {
   const { sink, events } = collect();
   const handler = createBrowseMessageHandler(sink);
   const fullName = "Instance._http._tcp.local.";
@@ -67,7 +70,7 @@ Deno.test("browse handler: unresolved-then-resolved emits found then resolved th
   assertEquals(events.map((e) => e.kind), ["found", "resolved", "updated"]);
 });
 
-Deno.test("browse handler: first sighting already resolved emits found then resolved", () => {
+test("browse handler: first sighting already resolved emits found then resolved", () => {
   const events: ServiceAnnouncement[] = [];
   const handler = createBrowseMessageHandler((e) => events.push(e));
   const fullName = "A._http._tcp.local.";
@@ -80,7 +83,7 @@ Deno.test("browse handler: first sighting already resolved emits found then reso
   assertEquals(events.map((e) => e.kind), ["found", "resolved"]);
 });
 
-Deno.test("browse handler: unresolved-then-unresolved (TXT-only) does not emit updated", () => {
+test("browse handler: unresolved-then-unresolved (TXT-only) does not emit updated", () => {
   const { sink, events } = collect();
   const handler = createBrowseMessageHandler(sink);
   const fullName = "TxtOnly._http._tcp.local.";
@@ -97,7 +100,7 @@ Deno.test("browse handler: unresolved-then-unresolved (TXT-only) does not emit u
   assertEquals(events.map((e) => e.kind), ["found"]);
 });
 
-Deno.test("browse handler: inactive emits removed and resets state", () => {
+test("browse handler: inactive emits removed and resets state", () => {
   const events: ServiceAnnouncement[] = [];
   const handler = createBrowseMessageHandler((e) => events.push(e));
   const fullName = "B._http._tcp.local.";
@@ -121,14 +124,14 @@ Deno.test("browse handler: inactive emits removed and resets state", () => {
   assertEquals(removed.isActive, false);
 });
 
-Deno.test("browse handler: stopped messages are ignored", () => {
+test("browse handler: stopped messages are ignored", () => {
   const events: ServiceAnnouncement[] = [];
   const handler = createBrowseMessageHandler((e) => events.push(e));
   handler({ browseId: 1, reason: "timeout" });
   assertEquals(events.length, 0);
 });
 
-Deno.test("decodeTxt: preserves the three TXT states", () => {
+test("decodeTxt: preserves the three TXT states", () => {
   const decoded = decodeTxt({
     flag: true,
     empty: null,
@@ -139,7 +142,7 @@ Deno.test("decodeTxt: preserves the three TXT states", () => {
   assertEquals(decoded.bytes, new Uint8Array([104, 105]));
 });
 
-Deno.test("encodeTxt: maps true/null/bytes/string to the wire form", () => {
+test("encodeTxt: maps true/null/bytes/string to the wire form", () => {
   const encoded = encodeTxt({
     flag: true,
     empty: null,
@@ -154,7 +157,7 @@ Deno.test("encodeTxt: maps true/null/bytes/string to the wire form", () => {
   });
 });
 
-Deno.test("toAnnouncement: copies all fields and decodes txt", () => {
+test("toAnnouncement: copies all fields and decodes txt", () => {
   const ann = toAnnouncement(
     record({
       fullName: "C._http._tcp.local.",

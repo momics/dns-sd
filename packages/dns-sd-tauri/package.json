@@ -25,13 +25,15 @@
   "scripts": {
     "build": "tsc --project tsconfig.json && npm run build:global",
     "build:global": "esbuild guest-js/index.ts --bundle --format=iife --global-name=__TAURI_PLUGIN_DNS_SD__ --outfile=dist-js/global.js",
-    "typecheck": "tsc --noEmit --project tsconfig.json"
+    "typecheck": "tsc --noEmit --project tsconfig.json",
+    "test:node": "tsc --project tsconfig.test.json && node dist-test/run.js"
   },
   "dependencies": {
     "@momics/dns-sd-shared": "0.1.0",
     "@tauri-apps/api": "^2"
   },
   "devDependencies": {
+    "@types/node": "^22.20.0",
     "esbuild": "^0.24.0",
     "typescript": "^5.7.0"
   },

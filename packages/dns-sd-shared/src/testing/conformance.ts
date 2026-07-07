@@ -9,8 +9,9 @@
  * @example
  * ```ts
  * import { conformanceCases } from "@momics/dns-sd-shared/testing";
+ * import { test } from "@momics/dns-sd-shared/testing/harness";
  * for (const c of conformanceCases()) {
- *   Deno.test(c.name, () => c.run(makeHarness()));
+ *   test(c.name, () => c.run(makeHarness()));
  * }
  * ```
  *

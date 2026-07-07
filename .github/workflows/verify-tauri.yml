@@ -82,7 +82,10 @@ jobs:
       - name: deno check (guest-js + tests)
         run: deno task --cwd packages/dns-sd-tauri check
 
-      - name: deno test (guest-js unit tests)
+      - name: Test guest-js under Node (shared harness)
+        run: npm run test:node --workspace=@momics/dns-sd-tauri
+
+      - name: Test guest-js under Deno (shared harness)
         run: deno task --cwd packages/dns-sd-tauri test
 
       - name: deno fmt --check

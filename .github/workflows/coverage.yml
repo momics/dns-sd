@@ -59,7 +59,7 @@ jobs:
           set -o pipefail
           npx c8 --reporter=text-summary --reporter=lcov \
             --report-dir=coverage/node \
-            node --test 'packages/dns-sd-node/dist/test/**/*.test.js' | tee node-cov.txt
+            node packages/dns-sd-node/dist/test/run.js | tee node-cov.txt
           {
             echo '### TS coverage — `@momics/dns-sd-node` (transport tests)'
             echo '_Includes shared-core lines exercised via the transport._'
@@ -88,8 +88,8 @@ jobs:
       - name: Run dns-sd-deno tests with coverage
         working-directory: packages/dns-sd-deno
         run: |
-          deno test --unstable-net --allow-net --allow-sys --allow-env \
-            --coverage=coverage-raw
+          deno run --unstable-net --allow-net --allow-sys --allow-env \
+            --coverage=coverage-raw test/run.ts
 
       - name: Report coverage
         working-directory: packages/dns-sd-deno

@@ -180,15 +180,17 @@ UTF-8 (the public `setAttribute` accepts only `String` values). Subtypes on
 
 | Coverage                                             | Platform | Automated?             |
 | ---------------------------------------------------- | -------- | ---------------------- |
-| Guest-js kind-derivation + TXT codec (unit)          | all      | ✅ `deno test`         |
+| Guest-js kind-derivation + TXT codec (unit)          | all      | ✅ harness (Deno + Node) |
 | Rust command impls: browse↔advertise, TXT, goodbye, timeout | desktop | ✅ `cargo test`  |
 | Real-network discovery (two instances on one host)   | desktop  | ✅ gated, see below    |
 | iOS / Android native paths                            | mobile   | ⚠️ manual via example  |
 
 - **Guest-js unit tests** (`guest-js/adapter-core.test.ts`) exercise the pure
   mapping logic — the `found → resolved → updated → removed` state machine and
-  the TXT encoders — with no webview or IPC. Run with
-  `deno task --cwd packages/dns-sd-tauri test`.
+  the TXT encoders — with no webview or IPC. They register through the shared
+  cross-runtime harness, so the same file runs under both runtimes:
+  `deno task --cwd packages/dns-sd-tauri test` (Deno) and
+  `npm run test:node --workspace @momics/dns-sd-tauri` (Node).
 
 - **Rust tests** (`src/desktop/commands.rs`, `#[cfg(test)]`) drive the desktop
   command implementations directly through a `tauri::test` mock app. TXT
