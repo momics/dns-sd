@@ -27,6 +27,15 @@
       ]
     },
     "members": {
+      "packages/dns-sd-node": {
+        "packageJson": {
+          "dependencies": [
+            "npm:@momics/dns-sd-shared@0.1.0",
+            "npm:@types/node@^22.20.0",
+            "npm:typescript@^5.7.0"
+          ]
+        }
+      },
       "packages/dns-sd-shared": {
         "packageJson": {
           "dependencies": [

@@ -1,9 +1,11 @@
 name: CI
 
-# Typecheck, lint, format-check and run the shared test suite under BOTH Deno
-# and Node.js, proving the foundation is genuinely runtime-neutral. No Rust and
-# no publishing steps — this repo currently ships only the pure-TypeScript
-# `@momics/dns-sd-shared` package.
+# Typecheck, lint, format-check and run the test suites under BOTH Deno and
+# Node.js. The pure-TypeScript `@momics/dns-sd-shared` foundation proves it is
+# runtime-neutral by passing the same suite under both runtimes; the
+# `@momics/dns-sd-node` package adds a Node-only UDP-multicast transport and runs
+# its transport unit tests here (the real-network conformance suite is gated
+# behind DNS_SD_NETWORK_TESTS and runs locally). No Rust and no publishing steps.
 
 on:
   push:
@@ -14,7 +16,6 @@ on:
       - ".editorconfig"
       - ".gitignore"
   pull_request:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -59,7 +60,7 @@ jobs:
 
   # ── Test suite under Node.js (build with tsc, then run compiled output) ──────
   test-node:
-    name: Test (Node.js)
+    name: Test (Node.js · shared)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -70,4 +71,25 @@ jobs:
       - name: Typecheck under tsc
         run: npm run typecheck
       - name: Run shared tests + conformance suite under Node
-        run: npm run test:node
+        run: npm run test:node --workspace @momics/dns-sd-shared
+
+  # ── Node.js runtime package (@momics/dns-sd-node) ────────────────────────────
+  test-node-runtime:
+    name: Test (Node.js · dns-sd-node)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm ci
+      # Build the shared package first so the Node adapter can consume it.
+      - name: Build @momics/dns-sd-shared
+        run: npm run build --workspace @momics/dns-sd-shared
+      - name: Typecheck @momics/dns-sd-node
+        run: npm run typecheck --workspace @momics/dns-sd-node
+      # Transport unit tests always run. The real-network conformance suite is
+      # gated behind DNS_SD_NETWORK_TESTS and skipped here, since GitHub-hosted
+      # runners don't provide a working multicast loopback path.
+      - name: Run @momics/dns-sd-node transport tests
+        run: npm run test:node --workspace @momics/dns-sd-node

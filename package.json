@@ -2,7 +2,8 @@
   "private": true,
   "version": "0.0.0",
   "workspaces": [
-    "packages/dns-sd-shared"
+    "packages/dns-sd-shared",
+    "packages/dns-sd-node"
   ],
   "scripts": {
     "typecheck": "npm run typecheck --workspaces",
