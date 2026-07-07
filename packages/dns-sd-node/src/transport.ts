@@ -64,6 +64,12 @@ interface SentEcho {
   expiresAt: number;
 }
 
+// Self-echo suppression (dropping our own looped-back multicast datagrams) is
+// duplicated in the sibling Deno transport at packages/dns-sd-deno/src/transport.ts
+// (`recentSends` + `echoKey()`). The two intentionally differ: this one keys on an
+// FNV-1a fingerprint and caps by TTL; Deno keys on exact bytes and caps by entry
+// count. Keep both in sync. If a third transport is ever added, extract the logic
+// into a shared pure `EchoSuppressor` in dns-sd-shared instead of copying it again.
 const SELF_ECHO_TTL_MS = 5000;
 
 /**
