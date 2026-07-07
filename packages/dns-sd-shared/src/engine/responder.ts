@@ -57,6 +57,12 @@ export class Responder {
   private started = false;
   private closed = false;
 
+  // ── Response aggregation (RFC 6762 §6) ─────────────────────────────────────
+  /** Answers buffered for the current aggregation window (record references). */
+  private pendingAnswers: ResourceRecord[] = [];
+  /** The single pending-flush timer, or null when no window is open. */
+  private flushTimer: ReturnType<typeof setTimeout> | null = null;
+
   private ready!: Promise<void>;
   private resolveReady!: () => void;
   private rejectReady!: (err: Error) => void;
@@ -349,6 +355,37 @@ export class Responder {
     if (!this.resolvedReady()) return;
     const answers = this.answersFor(message);
     if (answers.length === 0) return;
+    // Buffer the answers and flush after a random aggregation delay so that
+    // answers accumulated within one window coalesce into a single response
+    // (RFC 6762 §6).
+    this.bufferAnswers(answers);
+  }
+
+  /** Add answers to the pending window, opening a flush timer if needed. */
+  private bufferAnswers(answers: ResourceRecord[]): void {
+    for (const answer of answers) {
+      if (!this.pendingAnswers.includes(answer)) {
+        this.pendingAnswers.push(answer);
+      }
+    }
+    if (this.flushTimer !== null) return;
+    const { responseAggregationMinMs: min, responseAggregationMaxMs: max } =
+      this.ctx.timing;
+    const delay = min + Math.random() * Math.max(0, max - min);
+    const timer = setTimeout(() => {
+      this.timers.delete(timer);
+      this.flushTimer = null;
+      if (!this.closed) this.flushAnswers();
+    }, delay);
+    this.timers.add(timer);
+    this.flushTimer = timer;
+  }
+
+  /** Send all buffered answers as one aggregated response. */
+  private flushAnswers(): void {
+    const answers = this.pendingAnswers;
+    this.pendingAnswers = [];
+    if (this.closed || answers.length === 0) return;
     this.ctx.send({
       header: responseHeader(),
       questions: [],
@@ -478,6 +515,8 @@ export class Responder {
     this.closed = true;
     for (const t of this.timers) clearTimeout(t);
     this.timers.clear();
+    this.flushTimer = null;
+    this.pendingAnswers = [];
     this.ctx.unregister(this);
   }
 
