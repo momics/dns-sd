@@ -36,8 +36,11 @@ jobs:
         run: |
           # GitHub's Ubuntu runners ship a packages.microsoft.com apt source that
           # intermittently serves an invalid InRelease ("no longer signed"),
-          # failing `apt-get update` with exit code 100. Drop it before updating.
-          sudo rm -f /etc/apt/sources.list.d/*microsoft*.list
+          # failing `apt-get update` with exit code 100. On Ubuntu 24.04 it lives
+          # in a deb822 *.sources file (e.g. azure-cli) that a *microsoft*.list
+          # glob misses, so remove every source referencing it regardless of file
+          # name or format before updating.
+          sudo sh -c 'grep -rlZ "packages\.microsoft\.com" /etc/apt/sources.list.d 2>/dev/null | xargs -0 -r rm -f' || true
           sudo apt-get update
           sudo apt-get install -y \
             libwebkit2gtk-4.1-dev \
