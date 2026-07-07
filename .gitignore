@@ -5,6 +5,11 @@ node_modules/
 dist/
 *.tsbuildinfo
 
+# Coverage output
+coverage/
+coverage-raw/
+lcov.info
+
 # macOS
 .DS_Store
 Thumbs.db
