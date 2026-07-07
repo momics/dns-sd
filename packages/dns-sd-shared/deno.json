@@ -1,0 +1,23 @@
+{
+  "name": "@momics/dns-sd-shared",
+  "version": "0.1.0",
+  "license": "MIT",
+  "compilerOptions": {
+    "lib": ["deno.window", "deno.ns", "esnext.disposable"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./wire": "./src/wire/index.ts",
+    "./testing": "./src/testing/index.ts"
+  },
+  "tasks": {
+    "test": "deno run test/run.ts",
+    "check": "deno check src/index.ts src/wire/index.ts src/testing/index.ts test/run.ts"
+  },
+  "publish": {
+    "include": ["src/", "README.md", "deno.json"]
+  }
+}

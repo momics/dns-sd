@@ -1,0 +1,73 @@
+name: CI
+
+# Typecheck, lint, format-check and run the shared test suite under BOTH Deno
+# and Node.js, proving the foundation is genuinely runtime-neutral. No Rust and
+# no publishing steps — this repo currently ships only the pure-TypeScript
+# `@momics/dns-sd-shared` package.
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "**.md"
+      - "LICENSE*"
+      - ".editorconfig"
+      - ".gitignore"
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── Formatting, linting and typecheck — under Deno ───────────────────────────
+  verify:
+    name: Verify (fmt · lint · typecheck)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: deno fmt --check
+        run: deno fmt --check
+
+      - name: deno lint
+        run: deno lint
+
+      - name: deno check (typecheck source + tests)
+        run: deno task check
+
+  # ── Test suite under Deno ────────────────────────────────────────────────────
+  test-deno:
+    name: Test (Deno)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Run shared tests + conformance suite under Deno
+        run: deno task test
+
+  # ── Test suite under Node.js (build with tsc, then run compiled output) ──────
+  test-node:
+    name: Test (Node.js)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm ci
+      - name: Typecheck under tsc
+        run: npm run typecheck
+      - name: Run shared tests + conformance suite under Node
+        run: npm run test:node
