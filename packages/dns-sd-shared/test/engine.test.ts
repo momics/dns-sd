@@ -14,6 +14,11 @@ import {
 import { RecordCache } from "../src/engine/cache.ts";
 import { FAST_TIMING } from "../src/engine/constants.ts";
 import type { CacheEvent } from "../src/engine/cache.ts";
+import {
+  canonicalRdata,
+  compareRdata,
+  recordKey,
+} from "../src/engine/records.ts";
 
 function ptr(instance: string, ttl = 120): ResourceRecord {
   return {
@@ -113,4 +118,71 @@ test("cache: record expires after its TTL", async () => {
     "expected removal after TTL elapsed",
   );
   cache.close();
+});
+
+test("records: canonical RDATA uses UTF-8 for non-ASCII names and TXT keys", () => {
+  // A PTR whose target label contains 'é' (U+00E9). The canonical RDATA must
+  // match the UTF-8 wire form (0x63 0x61 0x66 0xC3 0xA9), not Latin-1 (0xE9).
+  const rr: ResourceRecord = {
+    name: ["_http", "_tcp", "local"],
+    type: ResourceType.PTR,
+    class: DnsClass.IN,
+    ttl: 120,
+    flush: false,
+    data: { kind: "PTR", name: ["café"] },
+  };
+  const rdata = canonicalRdata(rr);
+  const label = new TextEncoder().encode("café");
+  const expected = new Uint8Array([label.byteLength, ...label, 0]);
+  assertEquals(
+    [...rdata].join(","),
+    [...expected].join(","),
+    "PTR canonical name must be UTF-8, matching the wire encoder",
+  );
+
+  // A non-ASCII TXT key (U+0100, 'Ā') must be encoded as UTF-8 (0xC4 0x80),
+  // never truncated to a single byte (0x00) — which would corrupt recordKey.
+  const txt: ResourceRecord = {
+    name: ["inst", "_http", "_tcp", "local"],
+    type: ResourceType.TXT,
+    class: DnsClass.IN,
+    ttl: 120,
+    flush: true,
+    data: { kind: "TXT", attributes: { "Ā": true } },
+  };
+  const txtRdata = canonicalRdata(txt);
+  const key = new TextEncoder().encode("Ā");
+  assertEquals(
+    [...txtRdata].join(","),
+    [key.byteLength, ...key].join(","),
+    "TXT key canonical bytes must be UTF-8",
+  );
+  // recordKey must reflect the UTF-8 TXT key bytes, not a truncated NUL.
+  assert(
+    recordKey(txt).endsWith("|02c480"),
+    "recordKey must reflect UTF-8 TXT key bytes (0xC4 0x80), not a truncated NUL",
+  );
+});
+
+test("records: RFC 6762 §8.2.1 tie-break orders non-ASCII names by UTF-8", () => {
+  // U+00A0 encodes to C2 A0, U+0100 to C4 80. In UTF-8, C2 < C4 so the U+00A0
+  // record sorts first. Under the old Latin-1 path U+00A0→A0 and U+0100→00,
+  // which reverses the order (and both truncate to one byte), so two hosts
+  // would disagree on the probe tie-break.
+  const mk = (label: string): ResourceRecord => ({
+    name: ["_http", "_tcp", "local"],
+    type: ResourceType.PTR,
+    class: DnsClass.IN,
+    ttl: 120,
+    flush: false,
+    data: { kind: "PTR", name: [label] },
+  });
+  const lower = mk("\u00A0"); // C2 A0
+  const higher = mk("\u0100"); // C4 80
+  assertEquals(
+    compareRdata(lower, higher),
+    -1,
+    "U+00A0 must sort before U+0100",
+  );
+  assertEquals(compareRdata(higher, lower), 1);
 });

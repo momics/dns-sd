@@ -49,7 +49,7 @@ export function canonicalRdata(rr: ResourceRecord): Uint8Array {
     // TXT ordering is significant to the wire form; preserve insertion order.
     for (const key of Object.keys(rr.data.attributes)) {
       const value = rr.data.attributes[key];
-      const keyBytes = latin1(key);
+      const keyBytes = utf8Bytes(key);
       let entry: Uint8Array;
       if (value === true) entry = keyBytes;
       else if (value === null || value === undefined) {
@@ -97,7 +97,7 @@ export function isConflicting(a: ResourceRecord, b: ResourceRecord): boolean {
 function canonicalName(labels: string[]): Uint8Array {
   const parts: Uint8Array[] = [];
   for (const label of labels) {
-    const bytes = latin1(label.toLowerCase());
+    const bytes = utf8Bytes(label.toLowerCase());
     parts.push(Uint8Array.from([bytes.byteLength]), bytes);
   }
   parts.push(Uint8Array.from([0]));
@@ -106,10 +106,10 @@ function canonicalName(labels: string[]): Uint8Array {
 
 const EQUALS = new Uint8Array([0x3d]);
 
-function latin1(str: string): Uint8Array {
-  const out = new Uint8Array(str.length);
-  for (let i = 0; i < str.length; i++) out[i] = str.charCodeAt(i) & 0xff;
-  return out;
+const UTF8_ENCODER = new TextEncoder();
+
+function utf8Bytes(str: string): Uint8Array {
+  return UTF8_ENCODER.encode(str);
 }
 
 function concat(...parts: Uint8Array[]): Uint8Array {
