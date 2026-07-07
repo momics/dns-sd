@@ -36,6 +36,16 @@ interface Question {
   type: ResourceType;
 }
 
+/**
+ * Maximum number of discovered instances a single {@link Browser} will track.
+ * A hostile PTR flood could otherwise grow the `instances` (and, transitively,
+ * `targets`) maps without bound. Once the cap is reached the browser simply
+ * stops accepting *new* instances — a graceful stop, not an eviction engine.
+ * Real networks advertise a handful to a few hundred instances of any one
+ * service type, so 1024 is far above any legitimate deployment.
+ */
+export const MAX_INSTANCES = 1024;
+
 interface InstanceState {
   fullName: string;
   labels: string[];
@@ -240,6 +250,9 @@ export class Browser {
   private discoverInstance(labels: string[]): void {
     const key = nameKey(labels);
     if (this.instances.has(key)) return;
+    // Graceful stop under a PTR flood: once the cap is reached, refuse new
+    // instances rather than letting the map grow without bound (issue #21).
+    if (this.instances.size >= MAX_INSTANCES) return;
     const parsed = parseServiceName(labels);
     const instance: InstanceState = {
       fullName: labels.join("."),
