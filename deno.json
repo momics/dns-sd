@@ -8,6 +8,12 @@
     "exclude": [
       "**/node_modules",
       "**/dist",
+      "**/dist-js",
+      "**/gen",
+      "**/target",
+      "**/examples",
+      "**/permissions/schemas",
+      "**/*.xml",
       "**/*.md"
     ]
   },
@@ -15,7 +21,11 @@
     "include": ["packages"],
     "exclude": [
       "**/node_modules",
-      "**/dist"
+      "**/dist",
+      "**/dist-js",
+      "**/gen",
+      "**/target",
+      "**/examples"
     ]
   },
   "tasks": {

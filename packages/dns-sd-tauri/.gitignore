@@ -1,0 +1,14 @@
+# Rust build output
+/target/
+Cargo.lock
+
+# Guest-js build output
+/dist-js/
+
+# Node
+node_modules/
+
+# Tauri / mobile generated
+/android/.tauri/
+/ios/.tauri/
+gen/

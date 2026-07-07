@@ -1,0 +1,98 @@
+name: Tauri plugin CI
+
+# Builds the `@momics/dns-sd-tauri` Tauri plugin for desktop and validates the
+# guest-js binding. Mobile (iOS/Android) sources are compile-ready but require
+# Xcode / the Android SDK, so they are verified via the example app rather than
+# here. No publishing steps.
+
+on:
+  push:
+    branches: [main, momics-dns-sd-shared-foundation]
+    paths:
+      - "packages/dns-sd-tauri/**"
+      - "packages/dns-sd-shared/**"
+      - ".github/workflows/tauri.yml"
+  pull_request:
+    paths:
+      - "packages/dns-sd-tauri/**"
+      - "packages/dns-sd-shared/**"
+      - ".github/workflows/tauri.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── Rust plugin: build (desktop) + unit/integration tests (loopback mDNS) ────
+  rust:
+    name: Rust plugin (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: packages/dns-sd-tauri
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libglib2.0-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: packages/dns-sd-tauri
+
+      - name: cargo build (desktop)
+        run: cargo build --verbose
+
+      - name: cargo test (unit + loopback integration, network tests skipped)
+        run: cargo test --verbose
+
+  # ── Guest-js: typecheck + build (Node/tsc) and check/test/fmt/lint (Deno) ────
+  guest-js:
+    name: Guest-js binding
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - run: npm ci
+
+      - name: Build shared package (dependency)
+        run: npm run build --workspace=@momics/dns-sd-shared
+
+      - name: Typecheck guest-js (tsc)
+        run: npm run typecheck --workspace=@momics/dns-sd-tauri
+
+      - name: Build guest-js (tsc + esbuild global bundle)
+        run: npm run build --workspace=@momics/dns-sd-tauri
+
+      - name: deno check (guest-js + tests)
+        run: deno task --cwd packages/dns-sd-tauri check
+
+      - name: deno test (guest-js unit tests)
+        run: deno task --cwd packages/dns-sd-tauri test
+
+      - name: deno fmt --check
+        run: deno fmt --check
+
+      - name: deno lint
+        run: deno lint
