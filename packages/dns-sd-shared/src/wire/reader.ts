@@ -31,6 +31,9 @@ const MAX_NAME_LENGTH = 255;
 /** Maximum length of a single label, in bytes (RFC 1035 §3.1). */
 const MAX_LABEL_LENGTH = 63;
 
+/** Shared UTF-8 decoder for label bytes (RFC 6763 §4.1.1). */
+const UTF8_DECODER = new TextDecoder();
+
 export class Reader {
   readonly bytes: Uint8Array;
   private readonly view: DataView;
@@ -180,11 +183,12 @@ export class Reader {
         throw new WireError(`name exceeds ${MAX_NAME_LENGTH} bytes`);
       }
 
-      let label = "";
-      for (let i = 0; i < len; i++) {
-        label += String.fromCharCode(this.view.getUint8(pos + 1 + i));
-      }
-      labels.push(label);
+      // RFC 6763 §4.1.1 requires DNS-SD names to be UTF-8, so decode the label
+      // bytes as UTF-8 in one shot rather than byte-by-byte (which would be
+      // Latin-1 and would corrupt any non-ASCII name).
+      labels.push(
+        UTF8_DECODER.decode(this.bytes.subarray(pos + 1, pos + 1 + len)),
+      );
       pos += 1 + len;
     }
 
