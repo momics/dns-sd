@@ -1,6 +1,6 @@
 # @momics/dns-sd
 
-A professional, standards-compliant **DNS-SD** (DNS Service Discovery over
+A standards-compliant **DNS-SD** (DNS Service Discovery over
 multicast DNS) library family for TypeScript. One simple, identical public API —
 `browse` and `advertise` — across every runtime: **Deno**, **Node.js** and
 **Tauri** (desktop **and** mobile).
