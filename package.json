@@ -3,7 +3,8 @@
   "version": "0.0.0",
   "workspaces": [
     "packages/dns-sd-shared",
-    "packages/dns-sd-node"
+    "packages/dns-sd-node",
+    "packages/dns-sd-tauri"
   ],
   "scripts": {
     "typecheck": "npm run typecheck --workspaces",

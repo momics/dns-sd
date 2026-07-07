@@ -9,8 +9,14 @@
     "exclude": [
       "**/node_modules",
       "**/dist",
+      "**/dist-js",
+      "**/gen",
+      "**/target",
+      "**/permissions/schemas",
+      "**/*.xml",
       "**/*.md",
-      "packages/dns-sd-node/examples"
+      "packages/dns-sd-node/examples",
+      "packages/dns-sd-tauri/examples"
     ]
   },
   "lint": {
@@ -18,7 +24,11 @@
     "exclude": [
       "**/node_modules",
       "**/dist",
-      "packages/dns-sd-node/examples"
+      "**/dist-js",
+      "**/gen",
+      "**/target",
+      "packages/dns-sd-node/examples",
+      "packages/dns-sd-tauri/examples"
     ]
   },
   "tasks": {
