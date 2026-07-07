@@ -1,5 +1,10 @@
 # @momics/dns-sd
 
+> [!WARNING]
+> **Experimental — use at your own risk.** This entire repository and all of its
+> packages are experimental, largely untested, and mostly AI-generated. They are
+> not production-ready and should not be relied upon for anything important.
+
 A standards-compliant **DNS-SD** (DNS Service Discovery over
 multicast DNS) library family for TypeScript. One simple, identical public API —
 `browse` and `advertise` — across every runtime: **Deno**, **Node.js** and
