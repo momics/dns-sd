@@ -82,3 +82,12 @@ export {
   subtypeServiceLabels,
 } from "./naming.ts";
 export { encodeTxtInput, txtFromAttributes, txtValueToString } from "./txt.ts";
+
+// ── Self-echo suppression (shared by the UDP transports) ────────────────────
+export {
+  DEFAULT_ECHO_MAX_ENTRIES,
+  DEFAULT_ECHO_TTL_MS,
+  EchoSuppressor,
+  type EchoSuppressorOptions,
+  fingerprint,
+} from "./echo.ts";

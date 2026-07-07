@@ -7,6 +7,7 @@
  */
 
 import { runAll } from "../src/testing/harness.ts";
+import "./echo.test.ts";
 import "./codec.test.ts";
 import "./codec.property.test.ts";
 import "./naming.test.ts";
