@@ -121,6 +121,9 @@ jobs:
 
       - name: Install Linux system dependencies
         run: |
+          # Drop GitHub's flaky packages.microsoft.com apt source (serves an
+          # invalid InRelease → `apt-get update` exits 100) before updating.
+          sudo rm -f /etc/apt/sources.list.d/*microsoft*.list
           sudo apt-get update
           sudo apt-get install -y \
             libwebkit2gtk-4.1-dev \

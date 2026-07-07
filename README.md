@@ -215,9 +215,14 @@ packets can never read out of range or hang the process. A per-runtime
 ## Real-network & cross-runtime verification
 
 Unit and conformance tests run entirely in-memory (no network) and pass under
-both Deno and Node. In addition, **real-network** conformance suites and a
-**cross-runtime interop** suite (advertise in one runtime ↔ browse in another
-over real loopback multicast) exercise genuine UDP multicast. These are **gated
+both Deno and Node. A **loopback interop test** (in-process `VirtualBus`, no
+multicast) drives a full advertise→browse exchange and decodes the actual bytes
+on the wire; because the whole shared suite runs under both runtimes in CI, it
+is the automated proof that Node and Deno encode/decode an identical wire format.
+
+In addition, **real-network** conformance suites and a **real-multicast
+cross-runtime interop** suite (advertise in one runtime ↔ browse in another over
+real loopback multicast) exercise genuine UDP multicast. These are **gated
 behind `DNS_SD_NETWORK_TESTS=1`** because many CI runners and some corporate
 networks block multicast:
 
@@ -268,10 +273,12 @@ cargo test
 ```
 
 CI typechecks, lints and format-checks the workspace, runs the shared suite
-under **both** Deno and Node (to guarantee runtime-neutrality), runs the Node
-and Deno runtime unit tests, and builds/tests the Tauri Rust plugin on Linux,
-macOS and Windows. The env-gated real-network and interop tests are intentionally
-**not** run in CI (they require working multicast).
+under **both** Deno and Node (to guarantee runtime-neutrality) — including the
+loopback interop test — runs the Node and Deno runtime unit tests, builds/tests
+the Tauri Rust plugin on Linux, macOS and Windows, and cross-compiles the plugin
+for Android (gating) and iOS (informational). The env-gated real-network and
+real-multicast interop tests are intentionally **not** run in CI (they require
+working multicast).
 
 ## Publishing / releasing
 
@@ -314,6 +321,11 @@ also re-run it manually from the Actions tab and scope it to a single registry.
 
 - This is **not** a browser library — browsers cannot open raw UDP multicast
   sockets, and there is no WebExtension mDNS API.
+- **QU (unicast-response) queries fall back to multicast responses.** The engine
+  parses and preserves the RFC 6762 §5.4 QU bit, but the `DatagramTransport`
+  seam is multicast-only by design, so a response to a QU question is sent to the
+  multicast group rather than unicast to the querier. This is fully interoperable
+  (a superset of what QU asks for) and keeps the transport seam minimal.
 - On **mobile** (iOS/Android) discovery goes through the OS resolver via the
   Tauri adapter; you do not get raw packet-level control there, and the platform
   imposes its own permission prompts and limitations (see the matrix above).

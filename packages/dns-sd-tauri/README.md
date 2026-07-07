@@ -176,6 +176,15 @@ UTF-8 (the public `setAttribute` accepts only `String` values). Subtypes on
 `advertise` require `setSubtypes` (Android 15 / API 35); at the current
 `compileSdk` (34) they are accepted for API parity but not registered.
 
+**Single-instance adapter:** the Tauri plugin exposes **one** shared DNS-SD
+adapter per app — the module-level `browse` / `advertise` / `close` helpers, and
+concurrent `browse`/`advertise` calls, all drive that single OS-backed instance
+(`NsdManager` / Network.framework / the desktop `mdns-sd` daemon). This differs
+from the Node and Deno runtimes, where their factories (`createNodeDnsSd()` and
+Deno's `createNode()`) can spin up multiple independent instances (each with its
+own socket) in one process. In practice one instance per app is what mobile OS
+resolvers expect; calling `close()` releases it.
+
 ## Testing
 
 | Coverage                                             | Platform | Automated?             |
