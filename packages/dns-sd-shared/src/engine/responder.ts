@@ -355,10 +355,30 @@ export class Responder {
     if (!this.resolvedReady()) return;
     const answers = this.answersFor(message);
     if (answers.length === 0) return;
-    // Buffer the answers and flush after a random aggregation delay so that
-    // answers accumulated within one window coalesce into a single response
-    // (RFC 6762 §6).
+
+    // A probe query (proposed records in the Authority Section) demands an
+    // immediate defensive response (RFC 6762 §6: probes time out in ~250ms),
+    // so it must bypass the aggregation window.
+    if (message.authorities.length > 0) {
+      this.sendAnswers(answers);
+      return;
+    }
+
+    // Otherwise buffer the answers and flush after a random aggregation delay
+    // so that answers accumulated within one window coalesce into a single
+    // response (RFC 6762 §6).
     this.bufferAnswers(answers);
+  }
+
+  /** Send a set of answers plus their additionals as one response. */
+  private sendAnswers(answers: ResourceRecord[]): void {
+    this.ctx.send({
+      header: responseHeader(),
+      questions: [],
+      answers,
+      authorities: [],
+      additionals: this.additionalsFor(answers),
+    });
   }
 
   /** Add answers to the pending window, opening a flush timer if needed. */
@@ -386,13 +406,7 @@ export class Responder {
     const answers = this.pendingAnswers;
     this.pendingAnswers = [];
     if (this.closed || answers.length === 0) return;
-    this.ctx.send({
-      header: responseHeader(),
-      questions: [],
-      answers,
-      authorities: [],
-      additionals: this.additionalsFor(answers),
-    });
+    this.sendAnswers(answers);
   }
 
   /** Called by the engine for every decoded response. */
@@ -476,8 +490,7 @@ export class Responder {
 
   private reprobe(): void {
     // Cancel current schedule and re-run the lifecycle under a fresh name.
-    for (const t of this.timers) clearTimeout(t);
-    this.timers.clear();
+    this.clearTimers();
     this.rename();
   }
 
@@ -513,11 +526,20 @@ export class Responder {
   private close(): void {
     if (this.closed) return;
     this.closed = true;
+    this.clearTimers();
+    this.ctx.unregister(this);
+  }
+
+  /**
+   * Cancel every scheduled timer and reset the response-aggregation state.
+   * Shared by {@link close} and {@link reprobe} so a re-probe never leaves a
+   * dead flush timer behind (which would silently disable all future answers).
+   */
+  private clearTimers(): void {
     for (const t of this.timers) clearTimeout(t);
     this.timers.clear();
     this.flushTimer = null;
     this.pendingAnswers = [];
-    this.ctx.unregister(this);
   }
 
   private schedule(delayMs: number, fn: () => void): void {
