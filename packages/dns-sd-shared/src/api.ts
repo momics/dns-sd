@@ -87,6 +87,10 @@ export function dnsSdOverAdapter(adapter: DnsSdAdapter): DnsSd {
         opts.service,
         (event) => queue.push(event),
       );
+      // Surface a browse-start failure to the consumer instead of swallowing
+      // it, so callers observe it just like the transport path. Once the queue
+      // is stopped/closed, `fail` is a no-op, so a late rejection is ignored.
+      handlePromise.catch((err) => queue.fail(err));
       let stopped = false;
       return withStop(
         queue,
@@ -105,7 +109,7 @@ export function dnsSdOverAdapter(adapter: DnsSdAdapter): DnsSd {
       const handle = await adapter.advertiseStart(opts.service);
       return makeAdvertiseHandle(
         () => handle.name,
-        () => handle.name,
+        () => handle.fullName,
         () => handle.stop(),
         opts.signal,
       );

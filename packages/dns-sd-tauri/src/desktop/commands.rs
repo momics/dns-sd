@@ -200,13 +200,25 @@ pub async fn advertise_start_impl<R: Runtime>(
         .register(service_info)
         .map_err(|e| format!("failed to register service: {e}"))?;
     let name = options.service.name.clone();
+    // A transport-path-matching FQN (`Instance._type._proto.domain`, no trailing
+    // dot): distinct from the daemon's lowercased `fullname` used for unregister.
+    let ty_domain = format_service_type(
+        &options.service.type_name,
+        options.service.protocol,
+        options.service.domain.as_deref(),
+    );
+    let full_name = format!("{}.{}", name, ty_domain.trim_end_matches('.'));
     state
         .advertise_sessions
         .lock()
         .await
         .insert(advertise_id, AdvertiseSession { fullname });
     info!("registered advertisement {advertise_id}");
-    Ok(AdvertiseHandle { advertise_id, name })
+    Ok(AdvertiseHandle {
+        advertise_id,
+        name,
+        full_name,
+    })
 }
 
 pub async fn advertise_stop_impl<R: Runtime>(

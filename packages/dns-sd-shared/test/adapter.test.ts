@@ -8,15 +8,22 @@
  * @module
  */
 
-import { assert, assertEquals, test } from "../src/testing/harness.ts";
-import { dnsSdOverAdapter } from "../src/api.ts";
+import {
+  assert,
+  assertEquals,
+  assertThrows,
+  test,
+} from "../src/testing/harness.ts";
+import { createDnsSd, dnsSdOverAdapter } from "../src/api.ts";
 import type {
   AdapterAdvertiseHandle,
   AdapterBrowseHandle,
   DnsSdAdapter,
   ServiceSink,
 } from "../src/seams/adapter.ts";
-import type { BrowseServiceSpec } from "../src/types.ts";
+import type { AdvertiseServiceSpec, BrowseServiceSpec } from "../src/types.ts";
+import { VirtualBus } from "../src/testing/loopback.ts";
+import { FAST_TIMING } from "../src/engine/constants.ts";
 
 interface StubResult {
   adapter: DnsSdAdapter;
@@ -97,4 +104,108 @@ test("adapter browse stops the handle when the signal is already aborted", async
   assert(result.done === true, "generator should complete immediately");
   await drainMicrotasks();
   assertEquals(browseStops(), 1, "pre-aborted teardown should stop once");
+});
+
+const advertiseSpec: AdvertiseServiceSpec = {
+  name: "My Web Server",
+  type: "http",
+  protocol: "tcp",
+  port: 8080,
+};
+
+/**
+ * A mock adapter whose `advertiseStart` reports the fully-qualified name the way
+ * a real OS resolver would, so we can assert the adapter path threads `fullName`
+ * through instead of aliasing it to the bare instance name.
+ */
+function advertisingAdapter(fullName: string): DnsSdAdapter {
+  return {
+    browseStart(): Promise<AdapterBrowseHandle> {
+      throw new Error("not used");
+    },
+    advertiseStart(
+      spec: AdvertiseServiceSpec,
+    ): Promise<AdapterAdvertiseHandle> {
+      return Promise.resolve({
+        name: spec.name,
+        fullName,
+        stop(): Promise<void> {
+          return Promise.resolve();
+        },
+      });
+    },
+    close(): Promise<void> {
+      return Promise.resolve();
+    },
+  };
+}
+
+test("adapter advertise().fullName is the FQN and matches the transport path", async () => {
+  // The FQN a real OS resolver would report for this instance.
+  const expectedFullName = "My Web Server._http._tcp.local";
+
+  const adapterDnsSd = dnsSdOverAdapter(advertisingAdapter(expectedFullName));
+  const adapterHandle = await adapterDnsSd.advertise({
+    service: advertiseSpec,
+  });
+
+  assertEquals(
+    adapterHandle.name,
+    "My Web Server",
+    "adapter advertise().name should be the instance name",
+  );
+  assertEquals(
+    adapterHandle.fullName,
+    expectedFullName,
+    "adapter advertise().fullName should be the FQN, not the bare name",
+  );
+
+  // The transport path derives the FQN itself; the adapter path must agree.
+  const bus = new VirtualBus();
+  const transportDnsSd = createDnsSd({
+    transport: bus.createTransport(),
+    timing: FAST_TIMING,
+  });
+  const transportHandle = await transportDnsSd.advertise({
+    service: advertiseSpec,
+  });
+
+  try {
+    assertEquals(
+      adapterHandle.fullName,
+      transportHandle.fullName,
+      "adapter and transport advertise().fullName must match for the same input",
+    );
+  } finally {
+    await adapterHandle.stop();
+    await transportHandle.stop();
+    await transportDnsSd.close();
+  }
+});
+
+test("adapter browse surfaces a browseStart rejection to the consumer", async () => {
+  const failure = new Error("permission denied");
+  const adapter: DnsSdAdapter = {
+    browseStart(
+      _spec: BrowseServiceSpec,
+      _sink: ServiceSink,
+    ): Promise<AdapterBrowseHandle> {
+      return Promise.reject(failure);
+    },
+    advertiseStart(): Promise<AdapterAdvertiseHandle> {
+      throw new Error("not used");
+    },
+    close(): Promise<void> {
+      return Promise.resolve();
+    },
+  };
+
+  const dnsSd = dnsSdOverAdapter(adapter);
+  const gen = dnsSd.browse({ service });
+
+  await assertThrows(
+    () => gen.next(),
+    (err) => err === failure,
+    "browse-start rejection must surface to the generator consumer",
+  );
 });

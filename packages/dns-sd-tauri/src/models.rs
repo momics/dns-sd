@@ -136,4 +136,7 @@ pub struct AdvertiseHandle {
     /// The final instance name in use (may differ from the requested name if the
     /// OS resolved a conflict by renaming).
     pub name: String,
+    /// The final fully-qualified instance name (e.g. `Instance._http._tcp.local.`),
+    /// so the guest-js `advertise().fullName` matches the transport path.
+    pub full_name: String,
 }

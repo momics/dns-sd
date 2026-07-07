@@ -613,7 +613,12 @@ class DnsSdPlugin: Plugin {
             listener.start(queue: self.sessionQueue)
         }
 
-        invoke.resolve(["advertiseId": advertiseId, "name": name])
+        let normalizedDomain = listenerDomain(args.service.domain)
+        let domainLabels = normalizedDomain.trimmingCharacters(in: CharacterSet(charactersIn: "."))
+        // A transport-path-matching FQN (`Instance._type._proto.domain`, no
+        // trailing dot) so `advertise().fullName` is consistent across runtimes.
+        let fullName = "\(name).\(serviceType).\(domainLabels)"
+        invoke.resolve(["advertiseId": advertiseId, "name": name, "fullName": fullName])
     }
 
     @objc public func advertise_stop(_ invoke: Invoke) throws {

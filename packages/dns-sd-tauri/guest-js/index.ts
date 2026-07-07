@@ -25,6 +25,7 @@ import {
   createDnsSd,
   type DnsSd,
   type DnsSdAdapter,
+  instanceNameLabels,
   type ServiceSink,
 } from "@momics/dns-sd-shared";
 import {
@@ -89,12 +90,25 @@ class TauriDnsSdAdapter implements DnsSdAdapter {
 
     return invoke<AdvertiseHandleWire>("plugin:dns-sd|advertise_start", {
       options: { service },
-    }).then(({ advertiseId, name }) => ({
-      name: name ?? spec.name,
-      async stop() {
-        await invoke("plugin:dns-sd|advertise_stop", { advertiseId });
-      },
-    }));
+    }).then(({ advertiseId, name, fullName }) => {
+      const finalName = name ?? spec.name;
+      // Prefer the FQN reported by the OS; otherwise derive it from the final
+      // instance name so `advertise().fullName` matches the transport path.
+      const finalFullName = fullName ??
+        instanceNameLabels(
+          finalName,
+          spec.type,
+          spec.protocol,
+          spec.domain,
+        ).join(".");
+      return {
+        name: finalName,
+        fullName: finalFullName,
+        async stop() {
+          await invoke("plugin:dns-sd|advertise_stop", { advertiseId });
+        },
+      };
+    });
   }
 
   close(): Promise<void> {
