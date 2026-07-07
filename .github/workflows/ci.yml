@@ -44,7 +44,9 @@ jobs:
         run: deno lint
 
       - name: deno check (typecheck source + tests)
-        run: deno task check
+        run: |
+          deno task check
+          deno task check:deno-runtime
 
   # ── Test suite under Deno ────────────────────────────────────────────────────
   test-deno:
@@ -93,3 +95,18 @@ jobs:
       # runners don't provide a working multicast loopback path.
       - name: Run @momics/dns-sd-node transport tests
         run: npm run test:node --workspace @momics/dns-sd-node
+
+  # ── @momics/dns-sd-deno transport tests (Deno) ───────────────────────────────
+  # Unit tests only: they use unicast loopback and never require multicast
+  # routing, so they're safe on headless runners. The real-multicast conformance
+  # suite is gated behind DNS_SD_NETWORK_TESTS=1 and is NOT run here.
+  test-deno-runtime:
+    name: Test (dns-sd-deno transport)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Run dns-sd-deno unit tests under Deno
+        run: deno task test:deno-runtime
