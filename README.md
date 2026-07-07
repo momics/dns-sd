@@ -203,7 +203,10 @@ The shared engine and codec implement:
 - **RFC 6763** — DNS-Based Service Discovery: PTR/SRV/TXT/A/AAAA records, the
   three-state TXT model (bare key → `true`, `key=value`, `key=` → empty),
   service-instance enumeration, subtypes, and the
-  `_services._dns-sd._udp.local` meta-query.
+  `_services._dns-sd._udp.local` meta-query. TXT keys are validated on the
+  advertise/encode path (§6.3): empty keys, keys containing `=`, and keys with
+  non-printable or non-ASCII bytes are rejected with a `RangeError` rather than
+  emitting a non-compliant record.
 
 The decoder is hardened with strict bounds checking so malformed or hostile
 packets can never read out of range or hang the process. A per-runtime
