@@ -6,8 +6,8 @@ name: Verify (Tauri)
 #   - tauri.yml    (on push / pull_request touching the plugin)
 #   - publish.yml  (before publishing a tag, against the tag's SHA)
 #
-# Mobile targets are built (never executed) to catch build regressions: Android
-# is gating, iOS is informational (see the `mobile` job). Full mobile validation
+# Mobile targets are built (never executed) to catch build regressions: both
+# Android and iOS are gating (see the `mobile` job). Full mobile validation
 # still happens via the example app on real toolchains.
 
 on:
@@ -66,8 +66,8 @@ jobs:
   #   Android (aarch64-linux-android) builds as a plain rlib on Linux and is
   #   GATING — a break fails CI.
   #   iOS (aarch64-apple-ios) pulls in swift-rs (it compiles a small Swift
-  #   package via Xcode) which is environment-sensitive, so it is INFORMATIONAL
-  #   (continue-on-error) — a break is surfaced but does not block.
+  #   package via Xcode) and is also GATING now that the native plugin compiles
+  #   cleanly — a break fails CI so the iOS path can't silently regress again.
   mobile:
     name: Mobile compile-check (${{ matrix.target }})
     strategy:
@@ -79,7 +79,7 @@ jobs:
             gating: true
           - target: aarch64-apple-ios
             os: macos-latest
-            gating: false
+            gating: true
     runs-on: ${{ matrix.os }}
     continue-on-error: ${{ !matrix.gating }}
     defaults:
