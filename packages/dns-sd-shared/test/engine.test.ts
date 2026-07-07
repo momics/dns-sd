@@ -5,7 +5,7 @@
  * @module
  */
 
-import { assert, assertEquals, test } from "./harness.ts";
+import { assert, assertEquals, test } from "../src/testing/harness.ts";
 import {
   DnsClass,
   type ResourceRecord,

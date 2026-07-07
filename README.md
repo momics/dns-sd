@@ -249,14 +249,14 @@ deno fmt --check                 # formatting
 deno lint                        # lint
 deno task check                  # typecheck shared (source + tests)
 deno task check:deno-runtime     # typecheck the Deno runtime package
-deno task test                   # shared suite under Deno
-deno task test:deno-runtime      # Deno transport unit tests
+deno task check:tauri            # typecheck the Tauri guest-js binding
+deno task test                   # whole TS suite under Deno (shared + deno + tauri)
 
 # Node / npm
 npm ci
 npm run typecheck                # tsc across all workspaces
 npm run build                    # build all TS packages
-npm run test:node                # shared + node runtime suites under Node
+npm run test:node                # whole TS suite under Node (shared + node + tauri)
 
 # Tauri plugin (Rust, desktop)
 cd packages/dns-sd-tauri

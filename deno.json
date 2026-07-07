@@ -10,6 +10,7 @@
       "**/node_modules",
       "**/dist",
       "**/dist-js",
+      "**/dist-test",
       "**/gen",
       "**/target",
       "**/permissions/schemas",
@@ -25,6 +26,7 @@
       "**/node_modules",
       "**/dist",
       "**/dist-js",
+      "**/dist-test",
       "**/gen",
       "**/target",
       "packages/dns-sd-node/examples",
@@ -32,9 +34,12 @@
     ]
   },
   "tasks": {
-    "test": "deno task --cwd packages/dns-sd-shared test",
-    "check": "deno task --cwd packages/dns-sd-shared check",
+    "test": "deno task test:shared && deno task test:deno-runtime && deno task test:tauri",
+    "test:shared": "deno task --cwd packages/dns-sd-shared test",
     "test:deno-runtime": "deno task --cwd packages/dns-sd-deno test",
-    "check:deno-runtime": "deno task --cwd packages/dns-sd-deno check"
+    "test:tauri": "deno task --cwd packages/dns-sd-tauri test",
+    "check": "deno task --cwd packages/dns-sd-shared check",
+    "check:deno-runtime": "deno task --cwd packages/dns-sd-deno check",
+    "check:tauri": "deno task --cwd packages/dns-sd-tauri check"
   }
 }

@@ -11,7 +11,7 @@ import {
   assertEquals,
   assertThrows,
   test,
-} from "./harness.ts";
+} from "../src/testing/harness.ts";
 import {
   decodeMessage,
   DnsClass,

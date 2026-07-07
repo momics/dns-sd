@@ -11,13 +11,10 @@
   "exports": {
     ".": "./src/mod.ts"
   },
-  "imports": {
-    "@std/assert": "jsr:@std/assert@^1.0.0"
-  },
   "tasks": {
-    "check": "deno check src/mod.ts examples/browse.ts examples/advertise.ts test/transport_test.ts test/conformance_test.ts",
-    "test": "deno test --unstable-net --allow-net --allow-sys --allow-env",
-    "test:network": "DNS_SD_NETWORK_TESTS=1 deno test --unstable-net --allow-net --allow-sys --allow-env",
+    "check": "deno check src/mod.ts examples/browse.ts examples/advertise.ts test/run.ts test/transport_test.ts test/conformance_test.ts",
+    "test": "deno run --unstable-net --allow-net --allow-sys --allow-env test/run.ts",
+    "test:network": "DNS_SD_NETWORK_TESTS=1 deno run --unstable-net --allow-net --allow-sys --allow-env test/run.ts",
     "example:browse": "deno run --unstable-net --allow-net --allow-sys examples/browse.ts",
     "example:advertise": "deno run --unstable-net --allow-net --allow-sys examples/advertise.ts"
   },

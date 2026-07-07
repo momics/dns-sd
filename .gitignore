@@ -3,6 +3,8 @@ node_modules/
 
 # TypeScript build output
 dist/
+dist-js/
+dist-test/
 *.tsbuildinfo
 
 # Coverage output

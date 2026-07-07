@@ -1,24 +1,11 @@
 {
   "version": "5",
   "specifiers": {
-    "jsr:@std/assert@1": "1.0.16",
-    "jsr:@std/internal@^1.0.12": "1.0.13",
     "npm:@tauri-apps/api@2": "2.11.1",
     "npm:@types/node@^22.20.0": "22.20.0",
     "npm:c8@^10.1.3": "10.1.3",
     "npm:esbuild@0.24": "0.24.2",
     "npm:typescript@^5.7.0": "5.9.3"
-  },
-  "jsr": {
-    "@std/assert@1.0.16": {
-      "integrity": "6a7272ed1eaa77defe76e5ff63ca705d9c495077e2d5fd0126d2b53fc5bd6532",
-      "dependencies": [
-        "jsr:@std/internal"
-      ]
-    },
-    "@std/internal@1.0.13": {
-      "integrity": "2f9546691d4ac2d32859c82dff284aaeac980ddeca38430d07941e7e288725c0"
-    }
   },
   "npm": {
     "@bcoe/v8-coverage@1.0.2": {
@@ -570,11 +557,6 @@
       ]
     },
     "members": {
-      "packages/dns-sd-deno": {
-        "dependencies": [
-          "jsr:@std/assert@1"
-        ]
-      },
       "packages/dns-sd-node": {
         "packageJson": {
           "dependencies": [
@@ -592,13 +574,11 @@
         }
       },
       "packages/dns-sd-tauri": {
-        "dependencies": [
-          "jsr:@std/assert@1"
-        ],
         "packageJson": {
           "dependencies": [
             "npm:@momics/dns-sd-shared@0.1.0",
             "npm:@tauri-apps/api@2",
+            "npm:@types/node@^22.20.0",
             "npm:esbuild@0.24",
             "npm:typescript@^5.7.0"
           ]

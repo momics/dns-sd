@@ -23,9 +23,19 @@ npm ci
 
 ## The golden rule: it must pass under BOTH runtimes
 
-The shared package is runtime-neutral, and CI proves it by running the exact
-same test suite under Deno **and** Node.js. Before opening a PR, run the full
-check locally:
+Every TypeScript package registers, asserts and reports through **one shared,
+zero-dependency cross-runtime harness**
+(`packages/dns-sd-shared/src/testing/harness.ts`, published as
+`@momics/dns-sd-shared/testing/harness`). The same `.test.ts` files run
+unchanged under both runtimes, so a **single command per runtime** runs the
+whole TypeScript suite with identical output:
+
+```bash
+deno task test        # whole TS suite under Deno  (shared + dns-sd-deno + tauri)
+npm run test:node     # whole TS suite under Node   (shared + dns-sd-node + tauri)
+```
+
+Before opening a PR, run the full check locally:
 
 ```bash
 # Deno
@@ -33,13 +43,13 @@ deno fmt --check
 deno lint
 deno task check                # typecheck shared (source + tests)
 deno task check:deno-runtime   # typecheck the Deno runtime package
-deno task test                 # run the shared suite under Deno
-deno task test:deno-runtime    # Deno transport unit tests
+deno task check:tauri          # typecheck the Tauri guest-js binding
+deno task test                 # whole TS suite under Deno
 
 # Node.js
 npm run typecheck    # tsc --noEmit across all workspaces
 npm run build        # build all TS packages
-npm run test:node    # tsc build + run the shared and node suites
+npm run test:node    # tsc build + whole TS suite under Node
 
 # Tauri plugin (Rust, desktop only)
 cd packages/dns-sd-tauri && cargo clippy --all-targets && cargo test
@@ -47,6 +57,47 @@ cd packages/dns-sd-tauri && cargo clippy --all-targets && cargo test
 
 All of the above must be green. Real-network and cross-runtime interop tests
 are gated behind `DNS_SD_NETWORK_TESTS=1` and are run locally, not in CI.
+
+## Test-driven workflow (add a failing harness test, then fix)
+
+There is exactly **one** way to write a TypeScript test: import `test` and the
+`assert*` helpers from the shared harness and register your case. Do not reach
+for `node:test`, `Deno.test`, `@std/assert` or any third-party runner — the
+harness is intentionally tiny and unifies registration, assertions and
+reporting everywhere.
+
+Every change is test-driven:
+
+1. **Add a failing test first.** Put it next to the code it covers, in a
+   `*.test.ts` file wired into that package's `run.ts` entry, and import the
+   harness:
+
+   ```ts
+   import { assert, assertEquals, test } from "@momics/dns-sd-shared/testing/harness";
+
+   test("describes the behaviour you want", () => {
+     assertEquals(subject(), expected);
+   });
+   ```
+
+   Run the suite for your runtime (`deno task test` or `npm run test:node`) and
+   watch it **fail** — this proves the test exercises the gap.
+
+2. **Make it pass** with the smallest change that satisfies the test, then
+   re-run until green under **both** runtimes.
+
+Notes:
+
+- Runtime-specific tests may still import their own runtime APIs (`node:dgram`,
+  `Deno.*`) — the harness only unifies registration/assertions/reporting, not
+  the runtime. Keep such a file in the package that owns that runtime.
+- Behaviour every runtime must share belongs in `conformanceCases()`
+  (`@momics/dns-sd-shared/testing`); each runtime package runs those cases
+  against its own transport.
+- Assertions: `assert` (truthy), `assertEquals` (`Object.is`),
+  `assertDeepEquals` (structural), `assertBytesEqual`, `assertThrows`. Register
+  a network-gated case with `test(name, fn, { ignore: !enabled })` so both
+  runtimes report the same skipped cases.
 
 ## Code style
 

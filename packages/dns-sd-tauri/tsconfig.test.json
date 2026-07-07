@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022", "ES2024.Promise", "ESNext.Disposable"],
+    "types": ["node"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": false,
+    "noImplicitOverride": true,
+    "verbatimModuleSyntax": true,
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true,
+    "declaration": false,
+    "sourceMap": true,
+    "outDir": "./dist-test",
+    "rootDir": "./guest-js",
+    "skipLibCheck": true
+  },
+  "include": [
+    "guest-js/adapter-core.ts",
+    "guest-js/adapter-core.test.ts",
+    "guest-js/run.ts"
+  ]
+}
