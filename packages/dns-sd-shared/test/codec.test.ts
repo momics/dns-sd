@@ -8,6 +8,7 @@
 import {
   assert,
   assertBytesEqual,
+  assertDeepEquals,
   assertEquals,
   assertThrows,
   test,
@@ -219,6 +220,72 @@ test("codec: name compression is used and decodes correctly", () => {
   const ptr = decoded.answers.find(isPTR)!;
   assertEquals(ptr.name.join("."), "_http._tcp.local");
   assertEquals(ptr.data.name.join("."), "Instance._http._tcp.local");
+});
+
+test("codec: non-ASCII instance names round-trip as UTF-8 (RFC 6763 §4.1.1)", () => {
+  // "Café" with a *combining* acute accent (e + U+0301), plus CJK and an emoji.
+  const instanceLabel = "Cafe\u0301 \u30B5\u30FC\u30D3\u30B9 \uD83C\uDF89";
+  const instance = [instanceLabel, "_http", "_tcp", "local"];
+  const service = ["_http", "_tcp", "local"];
+  const host = ["my-host", "local"];
+  // A non-ASCII TXT value must survive the wire round-trip too.
+  const description = "Café ☕";
+  const msg: DnsMessage = {
+    header: responseHeader(),
+    questions: [],
+    answers: [
+      {
+        name: service,
+        type: ResourceType.PTR,
+        class: DnsClass.IN,
+        ttl: 4500,
+        flush: false,
+        data: { kind: "PTR", name: instance },
+      },
+      {
+        name: instance,
+        type: ResourceType.SRV,
+        class: DnsClass.IN,
+        ttl: 120,
+        flush: true,
+        data: { kind: "SRV", priority: 0, weight: 0, port: 8080, target: host },
+      },
+      {
+        name: instance,
+        type: ResourceType.TXT,
+        class: DnsClass.IN,
+        ttl: 120,
+        flush: true,
+        data: {
+          kind: "TXT",
+          attributes: { desc: new TextEncoder().encode(description) },
+        },
+      },
+    ],
+    authorities: [],
+    additionals: [],
+  };
+
+  const decoded = decodeMessage(encodeMessage(msg));
+
+  const ptr = decoded.answers.find(isPTR)!;
+  // The decoded labels must be byte-for-byte identical strings to the input.
+  assertDeepEquals(ptr.data.name, instance);
+
+  // name / fullName are derived exactly as ServiceAnnouncement does in
+  // engine/query.ts emit(): fullName = labels.join("."), name = labels[0].
+  const labels = ptr.data.name;
+  assertEquals(labels[0], instanceLabel);
+  assertEquals(labels.join("."), `${instanceLabel}._http._tcp.local`);
+
+  const txt = decoded.answers.find(isTXT)!;
+  assertEquals(
+    new TextDecoder().decode(txt.data.attributes.desc as Uint8Array),
+    description,
+  );
+
+  // Encode side must write UTF-8 so the codec is symmetric.
+  assertBytesEqual(encodeMessage(decoded), encodeMessage(msg));
 });
 
 test("codec: AAAA round-trips", () => {

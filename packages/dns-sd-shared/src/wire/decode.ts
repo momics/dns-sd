@@ -213,9 +213,9 @@ function decodeTxt(reader: Reader, rdataEnd: number): TxtAttributes {
 
     if (eq === -1) {
       // No '=': attribute present with no value.
-      attributes[latin1(raw)] = true;
+      attributes[utf8(raw)] = true;
     } else {
-      const key = latin1(raw.subarray(0, eq));
+      const key = utf8(raw.subarray(0, eq));
       const value = raw.subarray(eq + 1);
       // `key=` (empty value) is represented as null; a non-empty value as bytes.
       attributes[key] = value.length === 0 ? null : value.slice();
@@ -253,13 +253,11 @@ function decodeNsecBitmap(reader: Reader, rdataEnd: number): number[] {
   return types;
 }
 
-function latin1(bytes: Uint8Array): string {
-  let out = "";
-  for (let i = 0; i < bytes.length; i++) {
-    out += String.fromCharCode(bytes[i] as number);
-  }
-  return out;
+function utf8(bytes: Uint8Array): string {
+  return UTF8_DECODER.decode(bytes);
 }
+
+const UTF8_DECODER = new TextDecoder();
 
 /** Collapse the longest run of zero groups in an IPv6 address to `::`. */
 function compressIpv6(groups: string[]): string {

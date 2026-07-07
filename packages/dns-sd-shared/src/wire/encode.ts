@@ -100,7 +100,7 @@ class Writer {
         this.names.set(key, this.len);
       }
       const label = labels[i] as string;
-      const bytes = latin1Bytes(label);
+      const bytes = utf8Bytes(label);
       if (bytes.byteLength > 63) {
         throw new RangeError(`label "${label}" exceeds 63 bytes`);
       }
@@ -191,7 +191,7 @@ function encodeTxt(writer: Writer, attributes: TxtAttributes): void {
   }
   for (const key of keys) {
     const value = attributes[key];
-    const keyBytes = latin1Bytes(key);
+    const keyBytes = utf8Bytes(key);
     let entry: Uint8Array;
     if (value === true) {
       entry = keyBytes;
@@ -242,13 +242,11 @@ function concat(...parts: Uint8Array[]): Uint8Array {
   return out;
 }
 
-function latin1Bytes(str: string): Uint8Array {
-  const out = new Uint8Array(str.length);
-  for (let i = 0; i < str.length; i++) {
-    out[i] = str.charCodeAt(i) & 0xff;
-  }
-  return out;
+function utf8Bytes(str: string): Uint8Array {
+  return UTF8_ENCODER.encode(str);
 }
+
+const UTF8_ENCODER = new TextEncoder();
 
 /** Encode a canonical IPv6 string (possibly with `::`) into 16 bytes. */
 export function encodeIpv6(address: string): Uint8Array {
