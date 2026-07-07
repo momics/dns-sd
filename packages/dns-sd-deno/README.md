@@ -108,7 +108,7 @@ Deno-specific additions:
   | `interfaceAddress`  | `"0.0.0.0"`                | IPv4 membership interface               |
   | `interfaceIndex`    | `0`                        | IPv6 membership interface               |
   | `hostname`          | `Deno.hostname()`          | advertise host derivation               |
-  | `localAddresses`    | discovered                 | override own addresses (see below)      |
+  | `localAddresses`    | discovered                 | own addrs; `[]` for same-host (see below) |
   | `multicastLoopback` | `true`                     | hear co-located sockets                 |
   | `multicastTtl`      | —                          | IPv4 TTL                                |
 
@@ -142,10 +142,16 @@ deno task test:network   # + the shared conformance suite over REAL multicast
   `DenoTransport` sockets. They use genuine multicast, so they are **gated**
   behind `DNS_SD_NETWORK_TESTS=1` and skipped by default.
 
-Multiple nodes coexist on one host by giving each `DenoTransport` a distinct
-synthetic `localAddresses` value: the engine's own-echo filter then lets a
-sibling's packets through while a node's own echoes stay harmless (the engine
-only treats *differing* rdata / a lost tie-break as a conflict).
+Multiple nodes coexist on one host by giving each `DenoTransport`
+`localAddresses: []`. The shared engine ignores datagrams whose source address
+is in `transport.localAddresses()`; on one host every node shares the same
+source IP, so real addresses would make each node filter its siblings out.
+With `[]` the engine's IP-based own-echo filter becomes a no-op (siblings get
+through), `DenoTransport` suppresses our OWN loopback datagrams itself (it
+tracks recently-sent bytes and drops an exact match), and `localAddresses()`
+falls back to loopback (`127.0.0.1` / `::1`) so advertised services still carry
+an A/AAAA record. On a real multi-host network, leave `localAddresses` at its
+default (the host's real interface addresses) for correct cross-host records.
 
 > Note: some networks (and many CI runners) administratively block multicast
 > routing. On such hosts the gated conformance suite cannot pass — run it on a

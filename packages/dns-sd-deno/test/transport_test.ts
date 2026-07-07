@@ -89,6 +89,25 @@ Deno.test("localAddresses returns the supplied override", () => {
   }
 });
 
+Deno.test("localAddresses falls back to loopback when empty", () => {
+  const v4 = new DenoTransport({ port: freeUdpPort(), localAddresses: [] });
+  try {
+    assertEquals(v4.localAddresses(), ["127.0.0.1"]);
+  } finally {
+    v4.close();
+  }
+  const v6 = new DenoTransport({
+    family: "IPv6",
+    port: freeUdpPort(),
+    localAddresses: [],
+  });
+  try {
+    assertEquals(v6.localAddresses(), ["::1"]);
+  } finally {
+    v6.close();
+  }
+});
+
 Deno.test("localAddresses discovery returns an array of strings", () => {
   const t = new DenoTransport({ port: freeUdpPort() });
   try {
@@ -155,6 +174,28 @@ Deno.test("close immediately after construction with tuning options does not cra
   }
   // Give the deferred tuning promises a tick to settle (and to reject, if buggy).
   await new Promise((r) => setTimeout(r, 50));
+});
+
+Deno.test("suppresses our own looped-back datagrams", async () => {
+  const port = freeUdpPort();
+  const t = new DenoTransport({ port, localAddresses: [] });
+  try {
+    const own = new Uint8Array([1, 2, 3, 4]);
+    const peer = new Uint8Array([9, 9, 9, 9]);
+    // Registers `own` for echo suppression (the multicast send itself may
+    // no-op on a network without multicast routing — that's fine).
+    await t.send(own);
+    const received = t.receive();
+    // A datagram identical to what we sent looks like our own loopback echo and
+    // must be dropped; a genuinely different peer datagram must be delivered.
+    await sendUnicast(port, own);
+    await sendUnicast(port, peer);
+    const datagram = await received;
+    assert(datagram !== null, "expected the peer datagram");
+    assertEquals(Array.from(datagram.data), Array.from(peer));
+  } finally {
+    t.close();
+  }
 });
 
 Deno.test("receive parses a real datagram and its source", async () => {

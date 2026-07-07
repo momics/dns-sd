@@ -12,11 +12,12 @@
  *
  * ── How multiple nodes coexist on one host ──
  * The shared engine ignores datagrams whose source address is in
- * `transport.localAddresses()`, and it tolerates a node hearing its own
- * packets (a conflict only fires on *differing* rdata / a lost tie-break).
- * So each harness node is given a DISTINCT synthetic local address: own-echo
- * filtering therefore never suppresses a *sibling's* packets, self-echoes stay
- * harmless, and every node still advertises a non-empty A record.
+ * `transport.localAddresses()`. On one host every node shares the same source
+ * IP, so real addresses would make each node filter its siblings out. Instead
+ * each node is given `localAddresses: []`: the engine's IP-based own-echo
+ * filter becomes a no-op (siblings get through), `DenoTransport` suppresses our
+ * OWN loopback datagrams itself, and `localAddresses()` falls back to loopback
+ * so advertised services still carry an A/AAAA record.
  *
  * @module
  */
@@ -33,8 +34,9 @@ const NETWORK_TESTS = Deno.env.get("DNS_SD_NETWORK_TESTS") === "1";
 
 /**
  * Build a conformance harness whose nodes share the host's real multicast
- * segment. Each node gets a unique synthetic local address + host name so the
- * engine can tell a node's own echoes apart from its siblings' traffic.
+ * segment. Each node uses `localAddresses: []` so co-located nodes discover one
+ * another (see the module comment) and gets a distinct host name so their
+ * A-record owner names don't collide.
  */
 function realTransportHarness(): ConformanceHarness {
   const nodes: DnsSd[] = [];
@@ -42,12 +44,11 @@ function realTransportHarness(): ConformanceHarness {
   return {
     createNode(): DnsSd {
       counter++;
-      const address = `10.255.255.${counter}`;
       const node = createDnsSd({
         transport: new DenoTransport({
           family: "IPv4",
           hostname: `conformance-node-${counter}.local`,
-          localAddresses: [address],
+          localAddresses: [],
           multicastLoopback: true,
         }),
         timing: FAST_TIMING,

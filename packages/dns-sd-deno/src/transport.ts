@@ -48,10 +48,14 @@ export interface DenoTransportOptions {
   /**
    * Override the local addresses reported to the engine. The engine uses these
    * both to build advertised A/AAAA records and to ignore our own multicast
-   * echoes. Defaults to this host's non-internal addresses for the family.
+   * echoes (by source IP). Defaults to this host's non-internal addresses for
+   * the family.
    *
-   * Supplying a distinct value per instance lets multiple nodes coexist on one
-   * host (e.g. for the conformance suite) without filtering each other out.
+   * Pass `[]` to run multiple nodes on ONE host (e.g. the conformance suite):
+   * the engine's IP-based own-echo filter is then a no-op so siblings aren't
+   * hidden, `localAddresses()` falls back to loopback so advertised services
+   * still carry an address, and this transport suppresses our own loopback
+   * datagrams itself.
    */
   localAddresses?: string[];
   /** Enable multicast loopback so co-located sockets hear each other. Defaults to `true`. */
@@ -62,6 +66,20 @@ export interface DenoTransportOptions {
 
 type MembershipV4 = Awaited<ReturnType<Deno.DatagramConn["joinMulticastV4"]>>;
 type MembershipV6 = Awaited<ReturnType<Deno.DatagramConn["joinMulticastV6"]>>;
+
+/** How long a sent datagram stays eligible for echo suppression. */
+const ECHO_WINDOW_MS = 2000;
+/** Cap on tracked sends, in case loopback echoes never arrive to consume them. */
+const ECHO_MAX_ENTRIES = 256;
+
+/** A cheap, exact key for a datagram's bytes (length-tagged binary string). */
+function echoKey(data: Uint8Array): string {
+  let binary = "";
+  for (let i = 0; i < data.length; i++) {
+    binary += String.fromCharCode(data[i] as number);
+  }
+  return `${data.length}:${binary}`;
+}
 
 /** A UDP-multicast {@link DatagramTransport} implemented with Deno's socket API. */
 export class DenoTransport implements DatagramTransport {
@@ -76,6 +94,14 @@ export class DenoTransport implements DatagramTransport {
   private readonly membership: Promise<MembershipV4 | MembershipV6 | null>;
   private readonly addresses: string[];
   private closed = false;
+
+  // Transport-level self-echo suppression: multicast loopback delivers our own
+  // datagrams back to us. We record the bytes of everything we send and drop a
+  // matching received datagram exactly once. This lets `localAddresses()` return
+  // an empty/loopback value (so multiple nodes can share one host without the
+  // engine's IP-based own-echo filter hiding siblings) while still not
+  // reprocessing our own traffic.
+  private readonly recentSends: { key: string; at: number }[] = [];
 
   constructor(options: DenoTransportOptions = {}) {
     this.family = options.family ?? "IPv4";
@@ -118,6 +144,8 @@ export class DenoTransport implements DatagramTransport {
 
   async send(data: Uint8Array): Promise<void> {
     if (this.closed) return;
+    // Record before sending: a loopback echo can arrive before `send` resolves.
+    this.rememberSend(data);
     try {
       await this.conn.send(data, {
         hostname: this.group,
@@ -132,10 +160,20 @@ export class DenoTransport implements DatagramTransport {
   }
 
   async receive(): Promise<ReceivedDatagram | null> {
-    if (this.closed) return null;
-    try {
-      const [data, addr] = await this.conn.receive();
-      const netAddr = addr as Deno.NetAddr;
+    while (!this.closed) {
+      let data: Uint8Array;
+      let netAddr: Deno.NetAddr;
+      try {
+        const [bytes, addr] = await this.conn.receive();
+        data = bytes;
+        netAddr = addr as Deno.NetAddr;
+      } catch {
+        // The socket was closed (BadResource) or interrupted: signal EOF with
+        // `null` rather than rejecting, per the DatagramTransport contract.
+        return null;
+      }
+      // Drop our own multicast loopback so we don't reprocess our own traffic.
+      if (this.isOwnEcho(data)) continue;
       return {
         data,
         source: {
@@ -144,15 +182,47 @@ export class DenoTransport implements DatagramTransport {
           family: this.family,
         },
       };
-    } catch {
-      // The socket was closed (BadResource) or interrupted: signal EOF with
-      // `null` rather than rejecting, per the DatagramTransport contract.
-      return null;
     }
+    return null;
   }
 
   localAddresses(): string[] {
-    return [...this.addresses];
+    // A non-empty configured/discovered set is used verbatim: on a real network
+    // this gives correct cross-host A/AAAA records and lets the engine filter
+    // our own echoes by source IP. When empty (e.g. the conformance harness runs
+    // several nodes on one host and passes `[]` so siblings aren't filtered out),
+    // fall back to loopback so advertised services still carry an address.
+    if (this.addresses.length > 0) return [...this.addresses];
+    return this.family === "IPv4" ? ["127.0.0.1"] : ["::1"];
+  }
+
+  /** Record the bytes of an outgoing datagram for later echo suppression. */
+  private rememberSend(data: Uint8Array): void {
+    const now = Date.now();
+    this.pruneSends(now);
+    this.recentSends.push({ key: echoKey(data), at: now });
+    // Bound memory if echoes never come back (e.g. loopback disabled).
+    if (this.recentSends.length > ECHO_MAX_ENTRIES) this.recentSends.shift();
+  }
+
+  /** Whether `data` matches a datagram we recently sent (consumes the match). */
+  private isOwnEcho(data: Uint8Array): boolean {
+    const now = Date.now();
+    this.pruneSends(now);
+    const key = echoKey(data);
+    const index = this.recentSends.findIndex((e) => e.key === key);
+    if (index === -1) return false;
+    this.recentSends.splice(index, 1);
+    return true;
+  }
+
+  private pruneSends(now: number): void {
+    while (
+      this.recentSends.length > 0 &&
+      now - (this.recentSends[0]?.at ?? now) > ECHO_WINDOW_MS
+    ) {
+      this.recentSends.shift();
+    }
   }
 
   async setMulticastTtl(ttl: number): Promise<void> {
