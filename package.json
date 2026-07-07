@@ -3,13 +3,15 @@
   "version": "0.0.0",
   "workspaces": [
     "packages/dns-sd-shared",
-    "packages/dns-sd-node"
+    "packages/dns-sd-node",
+    "packages/dns-sd-tauri"
   ],
   "scripts": {
     "typecheck": "npm run typecheck --workspaces",
     "build": "npm run build --workspaces",
     "test:node": "npm run test:node --workspaces",
     "test:deno": "cd packages/dns-sd-shared && deno task test",
+    "test:interop": "node --test \"integration/**/*.test.mjs\"",
     "fmt": "deno fmt",
     "fmt:check": "deno fmt --check",
     "lint": "deno lint",

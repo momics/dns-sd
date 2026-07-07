@@ -1,13 +1,17 @@
 # Contributing to @momics/dns-sd
 
 Thanks for your interest in contributing! This repository is a dual
-**Deno + npm** workspace containing the shared DNS-SD foundation.
+**Deno + npm** workspace containing the shared DNS-SD foundation
+(`@momics/dns-sd-shared`) and the per-runtime packages built on it:
+`@momics/dns-sd-node`, `@momics/dns-sd-deno`, and `@momics/dns-sd-tauri`
+(which also includes a Rust plugin crate).
 
 ## Prerequisites
 
 - [Deno](https://deno.com/) 2.x
 - [Node.js](https://nodejs.org/) 24+
 - npm 10+
+- [Rust](https://www.rust-lang.org/) (stable) — only for the Tauri plugin
 
 ## Getting started
 
@@ -27,15 +31,22 @@ check locally:
 # Deno
 deno fmt --check
 deno lint
-deno task check      # typecheck source + tests
-deno task test       # run the suite
+deno task check                # typecheck shared (source + tests)
+deno task check:deno-runtime   # typecheck the Deno runtime package
+deno task test                 # run the shared suite under Deno
+deno task test:deno-runtime    # Deno transport unit tests
 
 # Node.js
-npm run typecheck    # tsc --noEmit
-npm run test:node    # tsc build + run the suite
+npm run typecheck    # tsc --noEmit across all workspaces
+npm run build        # build all TS packages
+npm run test:node    # tsc build + run the shared and node suites
+
+# Tauri plugin (Rust, desktop only)
+cd packages/dns-sd-tauri && cargo clippy --all-targets && cargo test
 ```
 
-All of the above must be green.
+All of the above must be green. Real-network and cross-runtime interop tests
+are gated behind `DNS_SD_NETWORK_TESTS=1` and are run locally, not in CI.
 
 ## Code style
 

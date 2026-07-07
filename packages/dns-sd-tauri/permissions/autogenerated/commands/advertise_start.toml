@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-advertise-start"
+description = "Enables the advertise_start command without any pre-configured scope."
+commands.allow = ["advertise_start"]
+
+[[permission]]
+identifier = "deny-advertise-start"
+description = "Denies the advertise_start command without any pre-configured scope."
+commands.deny = ["advertise_start"]

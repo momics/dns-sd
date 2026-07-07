@@ -1,6 +1,7 @@
 {
   "workspace": [
-    "packages/dns-sd-shared"
+    "packages/dns-sd-shared",
+    "packages/dns-sd-deno"
   ],
   "nodeModulesDir": "none",
   "fmt": {
@@ -8,8 +9,14 @@
     "exclude": [
       "**/node_modules",
       "**/dist",
+      "**/dist-js",
+      "**/gen",
+      "**/target",
+      "**/permissions/schemas",
+      "**/*.xml",
       "**/*.md",
-      "packages/dns-sd-node/examples"
+      "packages/dns-sd-node/examples",
+      "packages/dns-sd-tauri/examples"
     ]
   },
   "lint": {
@@ -17,11 +24,17 @@
     "exclude": [
       "**/node_modules",
       "**/dist",
-      "packages/dns-sd-node/examples"
+      "**/dist-js",
+      "**/gen",
+      "**/target",
+      "packages/dns-sd-node/examples",
+      "packages/dns-sd-tauri/examples"
     ]
   },
   "tasks": {
     "test": "deno task --cwd packages/dns-sd-shared test",
-    "check": "deno task --cwd packages/dns-sd-shared check"
+    "check": "deno task --cwd packages/dns-sd-shared check",
+    "test:deno-runtime": "deno task --cwd packages/dns-sd-deno test",
+    "check:deno-runtime": "deno task --cwd packages/dns-sd-deno check"
   }
 }

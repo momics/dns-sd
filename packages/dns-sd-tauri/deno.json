@@ -1,0 +1,21 @@
+{
+  "name": "@momics/dns-sd-tauri",
+  "version": "0.1.0",
+  "license": "MIT",
+  "compilerOptions": {
+    "lib": ["deno.window", "dom", "esnext.disposable"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true
+  },
+  "exports": {
+    ".": "./guest-js/index.ts"
+  },
+  "imports": {
+    "@std/assert": "jsr:@std/assert@1"
+  },
+  "tasks": {
+    "check": "deno check guest-js/index.ts guest-js/adapter-core.test.ts",
+    "test": "deno test guest-js/"
+  }
+}

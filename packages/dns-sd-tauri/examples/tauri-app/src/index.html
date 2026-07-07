@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="stylesheet" href="styles.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DNS-SD Plugin Demo</title>
+    <script src="/global.js" defer></script>
+    <script type="module" src="/main.js" defer></script>
+  </head>
+
+  <body>
+    <header>
+      <h1>🔍 DNS-SD Plugin Demo</h1>
+      <div class="platform-info">Testing on: <span id="platform-info"></span></div>
+    </header>
+
+    <main>
+      <!-- Browse Section -->
+      <section class="card">
+        <div class="card-header">
+          <h2>Browse Services</h2>
+          <div id="browse-status" class="status-badge">Idle</div>
+        </div>
+        
+        <div class="form-row">
+          <div class="form-group">
+            <label for="browse-type">Service Type:</label>
+            <input type="text" id="browse-type" placeholder="e.g., http" value="http">
+          </div>
+          
+          <div class="form-group">
+            <label for="browse-protocol">Protocol:</label>
+            <select id="browse-protocol">
+              <option value="tcp">TCP</option>
+              <option value="udp">UDP</option>
+            </select>
+          </div>
+        </div>
+        
+        <div class="button-group">
+          <button id="browse-start" class="btn btn-primary">Start Browse</button>
+          <button id="browse-stop" class="btn btn-danger" disabled>Stop Browse</button>
+        </div>
+
+        <div class="stats-bar">
+          <span class="stat-inline"><strong id="browse-count">0</strong> services found</span>
+          <span class="stat-inline">Elapsed: <strong id="browse-elapsed">0.0s</strong></span>
+        </div>
+        
+        <div id="browse-results" class="results"></div>
+      </section>
+
+      <!-- Advertise Section -->
+      <section class="card">
+        <div class="card-header">
+          <h2>Advertise Service</h2>
+          <div id="adv-status-badge" class="status-badge">Idle</div>
+        </div>
+        
+        <div class="form-row">
+          <div class="form-group">
+            <label for="adv-name">Service Name:</label>
+            <input type="text" id="adv-name" placeholder="My Service" value="Test Service">
+          </div>
+          
+          <div class="form-group">
+            <label for="adv-type">Service Type:</label>
+            <input type="text" id="adv-type" placeholder="e.g., http" value="http">
+          </div>
+        </div>
+        
+        <div class="form-row">
+          <div class="form-group">
+            <label for="adv-protocol">Protocol:</label>
+            <select id="adv-protocol">
+              <option value="tcp">TCP</option>
+              <option value="udp">UDP</option>
+            </select>
+          </div>
+          
+          <div class="form-group">
+            <label for="adv-port">Port:</label>
+            <input type="number" id="adv-port" placeholder="8080" value="8080" min="1" max="65535">
+          </div>
+        </div>
+        
+        <div class="button-group">
+          <button id="adv-start" class="btn btn-primary">Start Advertise</button>
+          <button id="adv-stop" class="btn btn-danger" disabled>Stop Advertise</button>
+        </div>
+        
+        <div id="adv-status" class="results"></div>
+      </section>
+    </main>
+  </body>
+</html>
