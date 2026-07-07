@@ -42,15 +42,11 @@ export type ServiceEventKind =
   | "removed";
 
 /**
- * A single discovery event for a service instance.
- *
- * The same instance is reported multiple times over its lifetime as it is
- * discovered (`found`), resolved (`resolved`), changed (`updated`) and finally
- * removed (`removed`).
+ * The fields common to every {@link ServiceAnnouncement} variant, independent of
+ * its {@link ServiceEventKind}. The lifecycle-dependent fields (`kind`, `host`,
+ * `port`, `addresses`, `isActive`) are refined by each variant below.
  */
-export interface ServiceAnnouncement {
-  /** What this event represents. */
-  kind: ServiceEventKind;
+export interface ServiceAnnouncementBase {
   /** The service instance name, e.g. `"My Web Server"`. */
   name: string;
   /** The fully-qualified instance name, e.g. `"My Web Server._http._tcp.local"`. */
@@ -63,19 +59,107 @@ export interface ServiceAnnouncement {
   domain: string;
   /** Any DNS-SD subtypes advertised for this instance. */
   subtypes: string[];
-  /** The target host name (from the SRV record), or `null` if unresolved. */
-  host: string | null;
-  /** The port (from the SRV record), or `null` if unresolved. */
-  port: number | null;
-  /** Resolved IP addresses (IPv4 and/or IPv6). Empty until resolved. */
-  addresses: string[];
   /** The instance's TXT attributes. */
   txt: TxtRecords;
-  /** `false` once the instance has gone away (`kind === "removed"`). */
-  isActive: boolean;
   /** Wall-clock time (ms since epoch) this event was produced. */
   lastSeenMs: number;
 }
+
+/**
+ * A matching instance was discovered but its `SRV` record has not been resolved
+ * yet, so its host/port are unknown.
+ */
+export interface ServiceFound extends ServiceAnnouncementBase {
+  kind: "found";
+  /** Always `null` until the instance is resolved. */
+  host: null;
+  /** Always `null` until the instance is resolved. */
+  port: null;
+  /** Always empty until the instance is resolved. */
+  addresses: [];
+  /** Discovered instances are active. */
+  isActive: true;
+}
+
+/**
+ * The instance is now resolved. Per the cross-backend contract, `host` and
+ * `port` are **guaranteed** non-null; `addresses` is best-effort (see
+ * {@link ServiceAnnouncement}).
+ */
+export interface ServiceResolved extends ServiceAnnouncementBase {
+  kind: "resolved";
+  /** The target host name (from the `SRV` record). Guaranteed non-null. */
+  host: string;
+  /** The port (from the `SRV` record). Guaranteed non-null. */
+  port: number;
+  /** Resolved IP addresses (IPv4 and/or IPv6). Best-effort; may be empty. */
+  addresses: string[];
+  /** Resolved instances are active. */
+  isActive: true;
+}
+
+/**
+ * A previously resolved instance changed (e.g. a TXT or address update). Carries
+ * the same non-null host/port guarantee as {@link ServiceResolved}.
+ */
+export interface ServiceUpdated extends ServiceAnnouncementBase {
+  kind: "updated";
+  /** The target host name (from the `SRV` record). Guaranteed non-null. */
+  host: string;
+  /** The port (from the `SRV` record). Guaranteed non-null. */
+  port: number;
+  /** Resolved IP addresses (IPv4 and/or IPv6). Best-effort; may be empty. */
+  addresses: string[];
+  /** Updated instances are still active. */
+  isActive: true;
+}
+
+/**
+ * The instance went away (goodbye packet or cache expiry). This is a teardown
+ * event, so `host`/`port` are informational and may be `null`.
+ */
+export interface ServiceRemoved extends ServiceAnnouncementBase {
+  kind: "removed";
+  /** The last known host name, or `null` if it was never resolved. */
+  host: string | null;
+  /** The last known port, or `null` if it was never resolved. */
+  port: number | null;
+  /** The last known IP addresses; may be empty. */
+  addresses: string[];
+  /** Removed instances are no longer active. */
+  isActive: false;
+}
+
+/**
+ * A single discovery event for a service instance, modelled as a discriminated
+ * union keyed on {@link ServiceEventKind}. Narrow on `kind` to access the
+ * lifecycle-dependent fields with precise types.
+ *
+ * The same instance is reported multiple times over its lifetime as it is
+ * discovered (`found`), resolved (`resolved`), changed (`updated`) and finally
+ * removed (`removed`).
+ *
+ * ## Cross-backend contract
+ *
+ * This contract is uniform across every backend (the pure {@link browse} engine,
+ * the Node transport, and the Tauri OS-resolver adapter):
+ *
+ * - A `resolved` or `updated` announcement **guarantees** non-null `host` and
+ *   `port`. Consumers may rely on connecting to `host:port` without a null check
+ *   after narrowing on `kind`.
+ * - `addresses` is **best-effort**: it MAY be empty even on a `resolved` /
+ *   `updated` event. Some backends (notably the OS resolver behind the Tauri
+ *   adapter) can legitimately deliver `host` + `port` before — or without ever —
+ *   surfacing raw IP addresses. Do not treat an empty `addresses` array as
+ *   "unresolved".
+ * - A `found` announcement always has `host: null`, `port: null` and an empty
+ *   `addresses` array; the instance is known to exist but is not yet resolved.
+ */
+export type ServiceAnnouncement =
+  | ServiceFound
+  | ServiceResolved
+  | ServiceUpdated
+  | ServiceRemoved;
 
 /** Identifies the kind of service to browse for. */
 export interface BrowseServiceSpec {
