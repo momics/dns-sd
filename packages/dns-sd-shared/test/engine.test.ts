@@ -196,6 +196,46 @@ test("records: RFC 6762 §8.2.1 tie-break orders non-ASCII names by UTF-8", () =
 
 // ── Browser cache caps (issue #21) ────────────────────────────────────────────
 
+test("cache: a record flood cannot grow entries past the cap (issue #21)", () => {
+  // A PTR flood feeds many distinct (individually legal) records into the cache.
+  // Each distinct RDATA is a distinct entry scheduling several timers, so an
+  // uncapped cache would grow without bound. With the cap, entries level off.
+  const cache = new RecordCache({
+    timing: FAST_TIMING,
+    onRequery: () => {},
+    emit: () => {},
+    maxEntries: 4,
+  });
+  for (let i = 0; i < 64; i++) cache.add(ptr(`inst-${i}`));
+  assertEquals(
+    cache.records().length,
+    4,
+    "cache must stop accepting new entries once the cap is reached",
+  );
+  // A record already in the cache still refreshes while the cache is full.
+  cache.add(ptr("inst-0"));
+  assertEquals(cache.records().length, 4);
+  cache.close();
+});
+
+test("cache: expiry frees a slot so a new entry is admitted after the cap", async () => {
+  const cache = new RecordCache({
+    timing: FAST_TIMING,
+    onRequery: () => {},
+    emit: () => {},
+    maxEntries: 2,
+  });
+  cache.add({ ...ptr("a"), ttl: 0.05 });
+  cache.add({ ...ptr("b"), ttl: 0.05 });
+  cache.add(ptr("c")); // refused: cache is full
+  assertEquals(cache.records().length, 2);
+  await delay(120); // a and b expire, freeing both slots
+  assertEquals(cache.records().length, 0);
+  cache.add(ptr("d")); // now admitted
+  assertEquals(cache.records().length, 1);
+  cache.close();
+});
+
 function silentContext(): BrowseContext {
   return {
     timing: FAST_TIMING,

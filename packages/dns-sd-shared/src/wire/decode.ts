@@ -22,22 +22,36 @@ import {
 const HEADER_LENGTH = 12;
 
 /**
- * Maximum number of records permitted in any single section (questions,
- * answers, authorities, additionals). The section counts are u16 fields, so a
- * hostile packet may claim up to 65535 records while carrying only a few bytes.
- * The bounds-checked {@link Reader} already prevents over-reads, but an explicit
- * ceiling turns such a claim into an early, unambiguous rejection instead of a
- * long parse loop. mDNS messages are datagram-sized and carry at most a handful
- * of records per section, so 256 is comfortably above any legitimate message
- * while remaining two orders of magnitude below the u16 ceiling.
+ * Minimum on-wire size of a question: a root name (1 byte) + QTYPE (2) +
+ * QCLASS (2).
  */
-export const MAX_RECORDS = 256;
+const MIN_QUESTION_BYTES = 5;
 
-/** Throw if a declared section count exceeds {@link MAX_RECORDS}. */
-function checkSectionCount(count: number, section: string): void {
-  if (count > MAX_RECORDS) {
+/**
+ * Minimum on-wire size of a resource record: a root name (1 byte) + TYPE (2) +
+ * CLASS (2) + TTL (4) + RDLENGTH (2), with zero-length RDATA.
+ */
+const MIN_RECORD_BYTES = 11;
+
+/**
+ * Reject a section whose declared count could not possibly fit in the bytes that
+ * remain — e.g. a u16 count of 65535 over a near-empty datagram. This bounds a
+ * DoS-shaped claim (a huge count that would otherwise drive a long parse loop)
+ * without imposing a flat ceiling that would wrongly reject a legitimately large
+ * mDNS datagram: RFC 6762 permits messages up to ~9000 bytes, and a §7.1
+ * known-answer suppression list can carry many hundreds of records. The
+ * bounds-checked {@link Reader} still guards every individual read; this is an
+ * early, explicit rejection of an impossible claim.
+ */
+function checkSectionFits(
+  count: number,
+  minBytes: number,
+  remaining: number,
+  section: string,
+): void {
+  if (count * minBytes > remaining) {
     throw new WireError(
-      `${section} count ${count} exceeds the per-section cap of ${MAX_RECORDS}`,
+      `${section} count ${count} cannot fit in ${remaining} remaining byte(s)`,
     );
   }
 }
@@ -59,10 +73,11 @@ export function decodeMessage(bytes: Uint8Array): DnsMessage {
   const nsCount = reader.u16();
   const arCount = reader.u16();
 
-  checkSectionCount(qdCount, "question");
-  checkSectionCount(anCount, "answer");
-  checkSectionCount(nsCount, "authority");
-  checkSectionCount(arCount, "additional");
+  const remaining = bytes.byteLength - HEADER_LENGTH;
+  checkSectionFits(qdCount, MIN_QUESTION_BYTES, remaining, "question");
+  checkSectionFits(anCount, MIN_RECORD_BYTES, remaining, "answer");
+  checkSectionFits(nsCount, MIN_RECORD_BYTES, remaining, "authority");
+  checkSectionFits(arCount, MIN_RECORD_BYTES, remaining, "additional");
 
   const header: DnsHeader = {
     id,

@@ -26,7 +26,6 @@ import {
   ResourceType,
   WireError,
 } from "../src/wire/index.ts";
-import { MAX_RECORDS } from "../src/wire/decode.ts";
 
 function queryHeader(): DnsMessage["header"] {
   return {
@@ -574,9 +573,10 @@ test("hostile: compression pointer past end of message throws WireError", async 
   await assertWireErrorBounded(bytes);
 });
 
-test("hostile: header count far above the section cap throws WireError", async () => {
-  // ANCOUNT claims 60000 records but the body is empty. Must be rejected as a
-  // WireError (the explicit record-count ceiling), never a hang or huge alloc.
+test("hostile: an impossible record count for the buffer throws WireError", async () => {
+  // ANCOUNT claims 60000 records but the body is empty — those records cannot
+  // possibly fit, so the claim is rejected outright (never a hang or huge alloc)
+  // while a legitimately large datagram (see the known-answer test) is accepted.
   const bytes = new Uint8Array([
     0,
     0,
@@ -594,45 +594,31 @@ test("hostile: header count far above the section cap throws WireError", async (
   await assertWireErrorBounded(bytes);
 });
 
-test("hostile: a message exceeding the record-count ceiling is rejected", async () => {
-  // Build a message whose ANCOUNT is one past the cap, each answer a minimal,
-  // otherwise-valid RAW record (root name, unknown type, zero RDLENGTH). Before
-  // the cap this decoded cleanly; the ceiling must now reject it as a WireError.
-  const overCap = MAX_RECORDS + 1; // one past the per-section ceiling
-  const header = [
-    0,
-    0,
-    0x84,
-    0,
-    0,
-    0,
-    (overCap >> 8) & 0xff,
-    overCap & 0xff, // ANCOUNT
-    0,
-    0,
-    0,
-    0,
-  ];
-  const record = [
-    0, // root name
-    0,
-    0, // TYPE = 0 (uninterpreted → RAW)
-    0,
-    1, // CLASS = IN
-    0,
-    0,
-    0,
-    120, // TTL
-    0,
-    0, // RDLENGTH = 0
-  ];
-  const body: number[] = [];
-  for (let i = 0; i < overCap; i++) body.push(...record);
-  const bytes = new Uint8Array([...header, ...body]);
-  await assertThrows(
-    () => decodeMessage(bytes),
-    (e) => e instanceof WireError,
-  );
+test("codec: a large known-answer list (hundreds of records) is accepted", () => {
+  // RFC 6762 §7.1 known-answer suppression lists can be large: a single valid
+  // ~9000-byte datagram may carry many hundreds of PTR answers. The decoder must
+  // accept counts well past any small ceiling as long as the bytes are present.
+  const service = ["_http", "_tcp", "local"];
+  const answers: DnsMessage["answers"] = [];
+  for (let i = 0; i < 400; i++) {
+    answers.push({
+      name: service,
+      type: ResourceType.PTR,
+      class: DnsClass.IN,
+      ttl: 4500,
+      flush: false,
+      data: { kind: "PTR", name: [`inst-${i}`, "_http", "_tcp", "local"] },
+    });
+  }
+  const msg: DnsMessage = {
+    header: responseHeader(),
+    questions: [],
+    answers,
+    authorities: [],
+    additionals: [],
+  };
+  const decoded = decodeMessage(encodeMessage(msg));
+  assertEquals(decoded.answers.length, 400);
 });
 
 test("hostile: a boundary-sized TXT value (255 bytes) decodes", () => {

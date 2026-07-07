@@ -22,6 +22,20 @@ interface CacheEntry {
 }
 
 /**
+ * Maximum number of distinct records a single browse cache will hold. Under a
+ * hostile PTR flood, {@link RecordCache.add} is called for every matching
+ * (individually legal) PTR before the derived instance map is consulted, and
+ * each distinct RDATA becomes a distinct entry that schedules several timers —
+ * an unbounded growth vector even though the browser's `instances` map is
+ * capped (issue #21). Once the cache is full it refuses *new* distinct entries
+ * while still refreshing existing ones and letting expiry free slots. This is a
+ * graceful stop, not an eviction / LRU engine. The ceiling is generous enough
+ * to resolve the capped set of instances (each yielding a handful of PTR / SRV /
+ * TXT / A / AAAA records) with comfortable headroom.
+ */
+export const MAX_CACHE_ENTRIES = 8192;
+
+/**
  * Caches resource records keyed by (name, type, RDATA), scheduling expiry and
  * periodic re-queries. A single {@link RecordCache} is shared by a browse
  * operation across all the record types it tracks.
@@ -31,16 +45,20 @@ export class RecordCache {
   private readonly timing: EngineTiming;
   private readonly onRequery: (record: ResourceRecord) => void;
   private readonly emit: (event: CacheEvent) => void;
+  private readonly maxEntries: number;
   private closed = false;
 
   constructor(opts: {
     timing: EngineTiming;
     onRequery: (record: ResourceRecord) => void;
     emit: (event: CacheEvent) => void;
+    /** Cap on distinct cached entries (defaults to {@link MAX_CACHE_ENTRIES}). */
+    maxEntries?: number;
   }) {
     this.timing = opts.timing;
     this.onRequery = opts.onRequery;
     this.emit = opts.emit;
+    this.maxEntries = opts.maxEntries ?? MAX_CACHE_ENTRIES;
   }
 
   /** All currently cached records. */
@@ -84,6 +102,11 @@ export class RecordCache {
       existing.timers = this.scheduleLifetime(record);
       return;
     }
+
+    // Graceful cap (issue #21): once full, refuse NEW distinct entries. Existing
+    // records still refresh (handled above) and expiry / goodbye free slots, so
+    // legitimate churn keeps working — this is a stop, not an eviction engine.
+    if (this.entries.size >= this.maxEntries) return;
 
     const entry: CacheEntry = {
       record,
