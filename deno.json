@@ -1,0 +1,25 @@
+{
+  "workspace": [
+    "packages/dns-sd-shared"
+  ],
+  "nodeModulesDir": "none",
+  "fmt": {
+    "include": ["packages"],
+    "exclude": [
+      "**/node_modules",
+      "**/dist",
+      "**/*.md"
+    ]
+  },
+  "lint": {
+    "include": ["packages"],
+    "exclude": [
+      "**/node_modules",
+      "**/dist"
+    ]
+  },
+  "tasks": {
+    "test": "deno task --cwd packages/dns-sd-shared test",
+    "check": "deno task --cwd packages/dns-sd-shared check"
+  }
+}
