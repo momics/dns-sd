@@ -8,6 +8,7 @@
 
 import { runAll } from "./harness.ts";
 import "./codec.test.ts";
+import "./codec.property.test.ts";
 import "./naming.test.ts";
 import "./engine.test.ts";
 import "./e2e.test.ts";

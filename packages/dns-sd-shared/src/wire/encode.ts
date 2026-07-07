@@ -212,9 +212,9 @@ function encodeNsecBitmap(writer: Writer, types: number[]): void {
   // Restricted single-window (window 0) form used by mDNS (RFC 6762 §6.1).
   const inWindow = types.filter((t) => t >= 0 && t <= 255);
   if (inWindow.length === 0) {
-    writer.u8(0);
-    writer.u8(0);
-    return;
+    // A zero-length bitmap window is not decodable (RFC 4034 §4.1.2 requires
+    // 1..=32 bytes), so refuse to emit bytes our own decoder would reject.
+    throw new RangeError("NSEC record must list at least one type in window 0");
   }
   const maxType = Math.max(...inWindow);
   const bitmapLength = Math.floor(maxType / 8) + 1;

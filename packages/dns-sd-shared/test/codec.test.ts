@@ -241,6 +241,46 @@ test("codec: AAAA round-trips", () => {
   assertBytesEqual(encodeMessage(decoded), bytes);
 });
 
+function nsecMessage(types: number[]): DnsMessage {
+  return {
+    header: responseHeader(),
+    questions: [],
+    answers: [{
+      name: ["host", "local"],
+      type: ResourceType.NSEC,
+      class: DnsClass.IN,
+      ttl: 120,
+      flush: true,
+      data: { kind: "NSEC", nextDomainName: ["host", "local"], types },
+    }],
+    authorities: [],
+    additionals: [],
+  };
+}
+
+test("codec: NSEC round-trips", () => {
+  const bytes = encodeMessage(
+    nsecMessage([ResourceType.PTR, ResourceType.SRV]),
+  );
+  const decoded = decodeMessage(bytes);
+  const answer = decoded.answers[0]!;
+  assert(answer.data.kind === "NSEC");
+  assertEquals(
+    answer.data.types.sort((a, b) => a - b).join(","),
+    [ResourceType.PTR, ResourceType.SRV].join(","),
+  );
+  assertBytesEqual(encodeMessage(decoded), bytes);
+});
+
+test("codec: NSEC with no types is rejected on encode", async () => {
+  // A zero-length bitmap window is not decodable, so the encoder must refuse
+  // it rather than emit bytes its own decoder rejects.
+  await assertThrows(
+    () => encodeMessage(nsecMessage([])),
+    (e) => e instanceof RangeError,
+  );
+});
+
 // ── Hardening ─────────────────────────────────────────────────────────────────
 
 test("hardening: truncated header throws WireError, not a panic", async () => {
