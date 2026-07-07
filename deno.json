@@ -1,6 +1,7 @@
 {
   "workspace": [
-    "packages/dns-sd-shared"
+    "packages/dns-sd-shared",
+    "packages/dns-sd-deno"
   ],
   "nodeModulesDir": "none",
   "fmt": {
@@ -20,6 +21,8 @@
   },
   "tasks": {
     "test": "deno task --cwd packages/dns-sd-shared test",
-    "check": "deno task --cwd packages/dns-sd-shared check"
+    "check": "deno task --cwd packages/dns-sd-shared check",
+    "test:deno-runtime": "deno task --cwd packages/dns-sd-deno test",
+    "check:deno-runtime": "deno task --cwd packages/dns-sd-deno check"
   }
 }

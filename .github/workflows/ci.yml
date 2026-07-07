@@ -14,7 +14,6 @@ on:
       - ".editorconfig"
       - ".gitignore"
   pull_request:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -43,7 +42,9 @@ jobs:
         run: deno lint
 
       - name: deno check (typecheck source + tests)
-        run: deno task check
+        run: |
+          deno task check
+          deno task check:deno-runtime
 
   # ── Test suite under Deno ────────────────────────────────────────────────────
   test-deno:
@@ -71,3 +72,18 @@ jobs:
         run: npm run typecheck
       - name: Run shared tests + conformance suite under Node
         run: npm run test:node
+
+  # ── @momics/dns-sd-deno transport tests (Deno) ───────────────────────────────
+  # Unit tests only: they use unicast loopback and never require multicast
+  # routing, so they're safe on headless runners. The real-multicast conformance
+  # suite is gated behind DNS_SD_NETWORK_TESTS=1 and is NOT run here.
+  test-deno-runtime:
+    name: Test (dns-sd-deno transport)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Run dns-sd-deno unit tests under Deno
+        run: deno task test:deno-runtime
