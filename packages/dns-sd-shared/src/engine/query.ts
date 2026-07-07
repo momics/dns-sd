@@ -365,21 +365,59 @@ export class Browser {
       : undefined;
     const host = target ? target.labels.join(".") : null;
     const addresses = target ? Array.from(target.addresses) : [];
-    this.output.push({
-      kind,
+    const base = {
       name: instance.labels[0] ?? instance.fullName,
       fullName: instance.fullName,
       serviceType: instance.serviceType,
       protocol: instance.protocol,
       domain: instance.domain,
       subtypes: instance.subtypes,
-      host: kind === "found" ? null : host,
-      port: kind === "found" ? null : instance.port,
-      addresses: kind === "found" ? [] : addresses,
       txt: instance.txt,
-      isActive: kind !== "removed",
       lastSeenMs: Date.now(),
-    });
+    };
+
+    switch (kind) {
+      case "found":
+        this.output.push({
+          ...base,
+          kind: "found",
+          host: null,
+          port: null,
+          addresses: [],
+          isActive: true,
+        });
+        return;
+      case "resolved":
+        this.output.push({
+          ...base,
+          kind: "resolved",
+          host: host!,
+          port: instance.port!,
+          addresses,
+          isActive: true,
+        });
+        return;
+      case "updated":
+        this.output.push({
+          ...base,
+          kind: "updated",
+          host: host!,
+          port: instance.port!,
+          addresses,
+          isActive: true,
+        });
+        return;
+      case "removed":
+        this.output.push({
+          ...base,
+          kind: "removed",
+          host,
+          port: instance.port,
+          addresses,
+          isActive: false,
+        });
+        return;
+    }
   }
 
   /** Stop the browser and release resources. */

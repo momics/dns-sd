@@ -80,6 +80,23 @@ Deno.test("browse handler: first sighting already resolved emits found then reso
   assertEquals(events.map((e) => e.kind), ["found", "resolved"]);
 });
 
+Deno.test("browse handler: unresolved-then-unresolved (TXT-only) does not emit updated", () => {
+  const { sink, events } = collect();
+  const handler = createBrowseMessageHandler(sink);
+  const fullName = "TxtOnly._http._tcp.local.";
+
+  // 1) First sighting without host/port → found only.
+  handler({ browseId: 1, service: record({ fullName }) });
+  // 2) A TXT-only refresh on the still-unresolved instance (host/port still
+  //    null) must NOT emit `updated` — the instance is not resolved yet.
+  handler({
+    browseId: 1,
+    service: record({ fullName, txt: { path: [47] } }),
+  });
+
+  assertEquals(events.map((e) => e.kind), ["found"]);
+});
+
 Deno.test("browse handler: inactive emits removed and resets state", () => {
   const events: ServiceAnnouncement[] = [];
   const handler = createBrowseMessageHandler((e) => events.push(e));
