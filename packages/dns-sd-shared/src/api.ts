@@ -87,17 +87,14 @@ export function dnsSdOverAdapter(adapter: DnsSdAdapter): DnsSd {
         opts.service,
         (event) => queue.push(event),
       );
-      let started: Awaited<ReturnType<DnsSdAdapter["browseStart"]>> | null =
-        null;
-      handlePromise.then((h) => {
-        started = h;
-      }, () => {});
+      let stopped = false;
       return withStop(
         queue,
         () => {
+          if (stopped) return;
+          stopped = true;
           queue.close();
           void handlePromise.then((h) => h.stop(), () => {});
-          if (started) void started.stop();
         },
         opts.timeoutMs,
         opts.signal,
