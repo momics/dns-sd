@@ -8,14 +8,16 @@
     "exclude": [
       "**/node_modules",
       "**/dist",
-      "**/*.md"
+      "**/*.md",
+      "packages/dns-sd-node/examples"
     ]
   },
   "lint": {
     "include": ["packages"],
     "exclude": [
       "**/node_modules",
-      "**/dist"
+      "**/dist",
+      "packages/dns-sd-node/examples"
     ]
   },
   "tasks": {

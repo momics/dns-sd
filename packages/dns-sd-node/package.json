@@ -1,7 +1,7 @@
 {
-  "name": "@momics/dns-sd-shared",
+  "name": "@momics/dns-sd-node",
   "version": "0.1.0",
-  "description": "Runtime-agnostic, standards-compliant DNS-SD (mDNS / RFC 6762 + 6763) foundation. No native dependencies.",
+  "description": "Node.js runtime adapter for @momics/dns-sd-shared: a UDP-multicast DatagramTransport (via node:dgram) driving the shared, standards-compliant mDNS / DNS-SD engine.",
   "type": "module",
   "main": "./dist/src/index.js",
   "types": "./dist/src/index.d.ts",
@@ -9,28 +9,24 @@
     ".": {
       "import": "./dist/src/index.js",
       "types": "./dist/src/index.d.ts"
-    },
-    "./wire": {
-      "import": "./dist/src/wire/index.js",
-      "types": "./dist/src/wire/index.d.ts"
-    },
-    "./testing": {
-      "import": "./dist/src/testing/index.js",
-      "types": "./dist/src/testing/index.d.ts"
     }
   },
   "scripts": {
     "build": "tsc --project tsconfig.json",
-    "prepare": "tsc --project tsconfig.json",
     "typecheck": "tsc --noEmit --project tsconfig.json",
-    "test:node": "npm run build && node dist/test/run.js"
+    "test:node": "npm run build && node --test \"dist/test/**/*.test.js\""
   },
   "files": ["dist", "src", "README.md"],
-  "dependencies": {},
+  "dependencies": {
+    "@momics/dns-sd-shared": "0.1.0"
+  },
   "devDependencies": {
+    "@types/node": "^22.20.0",
     "typescript": "^5.7.0"
   },
-  "publishConfig": { "access": "public" },
+  "engines": {
+    "node": ">=18"
+  },
   "license": "(MIT OR Apache-2.0)",
   "repository": {
     "type": "git",
