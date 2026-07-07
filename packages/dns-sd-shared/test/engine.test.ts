@@ -8,6 +8,7 @@
 import { assert, assertEquals, test } from "../src/testing/harness.ts";
 import {
   DnsClass,
+  type DnsMessage,
   type ResourceRecord,
   ResourceType,
 } from "../src/wire/index.ts";
@@ -19,6 +20,12 @@ import {
   compareRdata,
   recordKey,
 } from "../src/engine/records.ts";
+import {
+  type BrowseContext,
+  Browser,
+  MAX_INSTANCES,
+} from "../src/engine/query.ts";
+import type { ServiceAnnouncement } from "../src/types.ts";
 
 function ptr(instance: string, ttl = 120): ResourceRecord {
   return {
@@ -185,4 +192,74 @@ test("records: RFC 6762 §8.2.1 tie-break orders non-ASCII names by UTF-8", () =
     "U+00A0 must sort before U+0100",
   );
   assertEquals(compareRdata(higher, lower), 1);
+});
+
+// ── Browser cache caps (issue #21) ────────────────────────────────────────────
+
+function silentContext(): BrowseContext {
+  return {
+    timing: FAST_TIMING,
+    send: () => {},
+    register: () => {},
+    unregister: () => {},
+  };
+}
+
+function ptrResponse(instance: string): DnsMessage {
+  return {
+    header: {
+      id: 0,
+      isResponse: true,
+      opcode: 0,
+      authoritative: true,
+      truncated: false,
+      recursionDesired: false,
+      recursionAvailable: false,
+      rcode: 0,
+    },
+    questions: [],
+    answers: [{
+      name: ["_http", "_tcp", "local"],
+      type: ResourceType.PTR,
+      class: DnsClass.IN,
+      ttl: 120,
+      flush: false,
+      data: { kind: "PTR", name: [instance, "_http", "_tcp", "local"] },
+    }],
+    authorities: [],
+    additionals: [],
+  };
+}
+
+test("engine: a PTR flood cannot grow the instances map past MAX_INSTANCES", async () => {
+  const browser = new Browser(silentContext(), {
+    type: "http",
+    protocol: "tcp",
+    domain: "local",
+  });
+
+  const found: ServiceAnnouncement[] = [];
+  const collecting = (async () => {
+    for await (const ev of browser.events()) {
+      if (ev.kind === "found") found.push(ev);
+    }
+  })();
+
+  // Push distinctly-named instances well past the cap. Each distinct PTR would,
+  // uncapped, create a new instance entry (and emit a "found" event).
+  const flood = MAX_INSTANCES + 128;
+  for (let i = 0; i < flood; i++) {
+    browser.onResponse(ptrResponse(`inst-${i}`));
+  }
+
+  // Let the async drain observe every buffered event, then stop the stream.
+  await new Promise<void>((r) => setTimeout(r, 0));
+  browser.close();
+  await collecting;
+
+  assertEquals(
+    found.length,
+    MAX_INSTANCES,
+    "the browser must stop accepting new instances at the cap",
+  );
 });

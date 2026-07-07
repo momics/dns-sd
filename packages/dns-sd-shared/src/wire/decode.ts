@@ -21,6 +21,27 @@ import {
 
 const HEADER_LENGTH = 12;
 
+/**
+ * Maximum number of records permitted in any single section (questions,
+ * answers, authorities, additionals). The section counts are u16 fields, so a
+ * hostile packet may claim up to 65535 records while carrying only a few bytes.
+ * The bounds-checked {@link Reader} already prevents over-reads, but an explicit
+ * ceiling turns such a claim into an early, unambiguous rejection instead of a
+ * long parse loop. mDNS messages are datagram-sized and carry at most a handful
+ * of records per section, so 256 is comfortably above any legitimate message
+ * while remaining two orders of magnitude below the u16 ceiling.
+ */
+export const MAX_RECORDS = 256;
+
+/** Throw if a declared section count exceeds {@link MAX_RECORDS}. */
+function checkSectionCount(count: number, section: string): void {
+  if (count > MAX_RECORDS) {
+    throw new WireError(
+      `${section} count ${count} exceeds the per-section cap of ${MAX_RECORDS}`,
+    );
+  }
+}
+
 /** Decode a complete DNS message. Throws {@link WireError} if malformed. */
 export function decodeMessage(bytes: Uint8Array): DnsMessage {
   if (bytes.byteLength < HEADER_LENGTH) {
@@ -37,6 +58,11 @@ export function decodeMessage(bytes: Uint8Array): DnsMessage {
   const anCount = reader.u16();
   const nsCount = reader.u16();
   const arCount = reader.u16();
+
+  checkSectionCount(qdCount, "question");
+  checkSectionCount(anCount, "answer");
+  checkSectionCount(nsCount, "authority");
+  checkSectionCount(arCount, "additional");
 
   const header: DnsHeader = {
     id,

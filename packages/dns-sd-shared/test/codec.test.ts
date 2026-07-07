@@ -26,6 +26,7 @@ import {
   ResourceType,
   WireError,
 } from "../src/wire/index.ts";
+import { MAX_RECORDS } from "../src/wire/decode.ts";
 
 function queryHeader(): DnsMessage["header"] {
   return {
@@ -478,4 +479,223 @@ test("Reader: bounds are enforced on primitive reads", async () => {
   assertEquals(r.u8(), 1);
   assertEquals(r.u8(), 2);
   await assertThrows(() => r.u8(), (e) => e instanceof WireError);
+});
+
+// ── Hostile input (issue #21) ─────────────────────────────────────────────────
+
+/**
+ * Decode `bytes` and assert it both throws a {@link WireError} and returns
+ * within `budgetMs`. The time bound is the load-bearing part: a pointer loop or
+ * decompression bomb that hangs would blow the budget even though it "throws".
+ */
+async function assertWireErrorBounded(
+  bytes: Uint8Array,
+  budgetMs = 100,
+): Promise<void> {
+  const start = Date.now();
+  await assertThrows(
+    () => decodeMessage(bytes),
+    (e) => e instanceof WireError,
+  );
+  const elapsed = Date.now() - start;
+  assert(
+    elapsed < budgetMs,
+    `decode took ${elapsed}ms (budget ${budgetMs}ms) — possible pointer-loop hang`,
+  );
+}
+
+test("hostile: cyclic compression pointer throws WireError in bounded time", async () => {
+  // A mutual pointer cycle: the name at offset 12 jumps to 14, which jumps back
+  // to 12. The backward-only rule must reject it *and* the decoder must not spin.
+  const bytes = new Uint8Array([
+    0,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0, // header, QD=1
+    0xc0,
+    0x0e, // offset 12: pointer → offset 14
+    0xc0,
+    0x0c, // offset 14: pointer → offset 12 (cycle)
+  ]);
+  await assertWireErrorBounded(bytes);
+});
+
+test("hostile: self-referential compression pointer is bounded", async () => {
+  const bytes = new Uint8Array([
+    0,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0, // header, QD=1
+    0xc0,
+    0x0c, // offset 12: pointer → itself
+  ]);
+  await assertWireErrorBounded(bytes);
+});
+
+test("hostile: compression pointer past end of message throws WireError", async () => {
+  // A well-formed-looking QNAME whose pointer targets an offset beyond the
+  // buffer. Pad the message so the pointer value is unambiguously past the end.
+  const bytes = new Uint8Array([
+    0,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0, // header, QD=1
+    3,
+    0x66,
+    0x6f,
+    0x6f, // label "foo"
+    0xc0,
+    0x7f, // pointer → offset 127 (far past end)
+  ]);
+  await assertWireErrorBounded(bytes);
+});
+
+test("hostile: header count far above the section cap throws WireError", async () => {
+  // ANCOUNT claims 60000 records but the body is empty. Must be rejected as a
+  // WireError (the explicit record-count ceiling), never a hang or huge alloc.
+  const bytes = new Uint8Array([
+    0,
+    0,
+    0x84,
+    0,
+    0,
+    0,
+    0xea,
+    0x60,
+    0,
+    0,
+    0,
+    0, // header, AN=60000
+  ]);
+  await assertWireErrorBounded(bytes);
+});
+
+test("hostile: a message exceeding the record-count ceiling is rejected", async () => {
+  // Build a message whose ANCOUNT is one past the cap, each answer a minimal,
+  // otherwise-valid RAW record (root name, unknown type, zero RDLENGTH). Before
+  // the cap this decoded cleanly; the ceiling must now reject it as a WireError.
+  const overCap = MAX_RECORDS + 1; // one past the per-section ceiling
+  const header = [
+    0,
+    0,
+    0x84,
+    0,
+    0,
+    0,
+    (overCap >> 8) & 0xff,
+    overCap & 0xff, // ANCOUNT
+    0,
+    0,
+    0,
+    0,
+  ];
+  const record = [
+    0, // root name
+    0,
+    0, // TYPE = 0 (uninterpreted → RAW)
+    0,
+    1, // CLASS = IN
+    0,
+    0,
+    0,
+    120, // TTL
+    0,
+    0, // RDLENGTH = 0
+  ];
+  const body: number[] = [];
+  for (let i = 0; i < overCap; i++) body.push(...record);
+  const bytes = new Uint8Array([...header, ...body]);
+  await assertThrows(
+    () => decodeMessage(bytes),
+    (e) => e instanceof WireError,
+  );
+});
+
+test("hostile: a boundary-sized TXT value (255 bytes) decodes", () => {
+  // The largest a single TXT string can be is 255 bytes; "k=" + 253 bytes hits
+  // that boundary exactly and must round-trip rather than being rejected.
+  const value = new Uint8Array(253).fill(0x61); // 253 × 'a'
+  const msg: DnsMessage = {
+    header: responseHeader(),
+    questions: [],
+    answers: [{
+      name: ["host", "local"],
+      type: ResourceType.TXT,
+      class: DnsClass.IN,
+      ttl: 120,
+      flush: true,
+      data: { kind: "TXT", attributes: { k: value } },
+    }],
+    authorities: [],
+    additionals: [],
+  };
+  const decoded = decodeMessage(encodeMessage(msg));
+  const txt = decoded.answers.find(isTXT)!;
+  assertEquals((txt.data.attributes.k as Uint8Array).length, 253);
+});
+
+test("hostile: a TXT string length running past its RDATA throws", async () => {
+  // RDLENGTH says 4 bytes of RDATA, but the first TXT string claims length 200.
+  const bytes = new Uint8Array([
+    0,
+    0,
+    0x84,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0, // header, AN=1
+    4,
+    0x68,
+    0x6f,
+    0x73,
+    0x74,
+    0, // name "host"
+    0,
+    16, // TYPE = TXT
+    0,
+    1, // CLASS = IN
+    0,
+    0,
+    0,
+    120, // TTL
+    0,
+    4, // RDLENGTH = 4
+    200,
+    0x61,
+    0x62,
+    0x63, // TXT string len=200 but only 3 bytes follow
+  ]);
+  await assertThrows(
+    () => decodeMessage(bytes),
+    (e) => e instanceof WireError,
+  );
 });
