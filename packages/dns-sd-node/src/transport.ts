@@ -6,7 +6,6 @@
  *
  * @module
  */
-
 import dgram from "node:dgram";
 import os from "node:os";
 import process from "node:process";
@@ -16,7 +15,12 @@ import type {
   IpFamily,
   ReceivedDatagram,
 } from "@momics/dns-sd-shared";
-import { MDNS_IPV4, MDNS_IPV6, MDNS_PORT } from "@momics/dns-sd-shared";
+import {
+  EchoSuppressor,
+  MDNS_IPV4,
+  MDNS_IPV6,
+  MDNS_PORT,
+} from "@momics/dns-sd-shared";
 
 /** Options for constructing a {@link NodeTransport}. */
 export interface NodeTransportOptions {
@@ -58,19 +62,10 @@ export interface NodeTransportOptions {
   interfaces?: string[];
 }
 
-/** Fingerprint bookkeeping for suppressing our own looped-back datagrams. */
-interface SentEcho {
-  count: number;
-  expiresAt: number;
-}
-
-// Self-echo suppression (dropping our own looped-back multicast datagrams) is
-// duplicated in the sibling Deno transport at packages/dns-sd-deno/src/transport.ts
-// (`recentSends` + `echoKey()`). The two intentionally differ: this one keys on an
-// FNV-1a fingerprint and caps by TTL; Deno keys on exact bytes and caps by entry
-// count. Keep both in sync. If a third transport is ever added, extract the logic
-// into a shared pure `EchoSuppressor` in dns-sd-shared instead of copying it again.
-const SELF_ECHO_TTL_MS = 5000;
+/** Fingerprint bookkeeping for suppressing our own looped-back datagrams is
+ * shared with the sibling Deno transport via the pure `EchoSuppressor` in
+ * dns-sd-shared: an FNV-1a fingerprint keyed into a Map, consumed once per send
+ * and bounded by both a TTL window and an entry cap. */
 
 /**
  * A UDP-multicast {@link DatagramTransport} for Node.js.
@@ -94,8 +89,8 @@ export class NodeTransport implements DatagramTransport {
   private readonly inbox: ReceivedDatagram[] = [];
   /** A parked `receive()` waiting for the next datagram. */
   private waiting: ((value: ReceivedDatagram | null) => void) | null = null;
-  /** Datagrams we sent recently, keyed by content, to drop our own echoes. */
-  private readonly sentEchoes = new Map<string, SentEcho>();
+  /** Suppresses our own looped-back datagrams (shared pure helper). */
+  private readonly echoes = new EchoSuppressor();
 
   private readyPromise: Promise<void> | null = null;
   private closed = false;
@@ -285,7 +280,7 @@ export class NodeTransport implements DatagramTransport {
     } catch {
       // Already closing/closed.
     }
-    this.sentEchoes.clear();
+    this.echoes.clear();
     this.inbox.length = 0;
     if (this.waiting) {
       const resolve = this.waiting;
@@ -332,36 +327,12 @@ export class NodeTransport implements DatagramTransport {
 
   /** Record a datagram we're about to send so we can drop its loopback echo. */
   private rememberSent(data: Uint8Array): void {
-    this.pruneSentEchoes();
-    const key = fingerprint(data);
-    const existing = this.sentEchoes.get(key);
-    const expiresAt = Date.now() + SELF_ECHO_TTL_MS;
-    if (existing) {
-      existing.count++;
-      existing.expiresAt = expiresAt;
-    } else {
-      this.sentEchoes.set(key, { count: 1, expiresAt });
-    }
+    this.echoes.remember(data);
   }
 
   /** True if `data` matches a datagram we recently sent (our own echo). */
   private isOwnEcho(data: Uint8Array): boolean {
-    const key = fingerprint(data);
-    const entry = this.sentEchoes.get(key);
-    if (!entry || entry.expiresAt < Date.now()) {
-      if (entry) this.sentEchoes.delete(key);
-      return false;
-    }
-    entry.count--;
-    if (entry.count <= 0) this.sentEchoes.delete(key);
-    return true;
-  }
-
-  private pruneSentEchoes(): void {
-    const now = Date.now();
-    for (const [key, entry] of this.sentEchoes) {
-      if (entry.expiresAt < now) this.sentEchoes.delete(key);
-    }
+    return this.echoes.consume(data);
   }
 }
 
@@ -378,19 +349,4 @@ function ensureLocal(hostname: string): string {
 function isV6(family: string | number): boolean {
   // Node <18 reported numeric families (4/6); newer versions use "IPv4"/"IPv6".
   return family === "IPv6" || family === 6;
-}
-
-/**
- * A cheap content fingerprint (length + FNV-1a hash) used to recognise our own
- * looped-back datagrams. Collisions only risk dropping a peer packet that is
- * byte-identical to one we just sent, which does not occur for the distinct
- * records each node advertises.
- */
-function fingerprint(data: Uint8Array): string {
-  let hash = 0x811c9dc5;
-  for (let i = 0; i < data.length; i++) {
-    hash ^= data[i] as number;
-    hash = Math.imul(hash, 0x01000193);
-  }
-  return `${data.length}:${(hash >>> 0).toString(16)}`;
 }

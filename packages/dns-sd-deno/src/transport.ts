@@ -12,6 +12,7 @@
 
 import {
   type DatagramTransport,
+  EchoSuppressor,
   type IpFamily,
   MDNS_IPV4,
   MDNS_IPV6,
@@ -67,27 +68,12 @@ export interface DenoTransportOptions {
 type MembershipV4 = Awaited<ReturnType<Deno.DatagramConn["joinMulticastV4"]>>;
 type MembershipV6 = Awaited<ReturnType<Deno.DatagramConn["joinMulticastV6"]>>;
 
-/** How long a sent datagram stays eligible for echo suppression. */
 // Self-echo suppression (dropping our own looped-back multicast datagrams) is
-// duplicated in the sibling Node transport at packages/dns-sd-node/src/transport.ts
-// (`sentEchoes` + `fingerprint()`). The two intentionally differ: this one keys on
-// exact bytes and caps by entry count; Node keys on an FNV-1a fingerprint and caps
-// by TTL. Keep both in sync. If a third transport is ever added, extract the logic
-// into a shared pure `EchoSuppressor` in dns-sd-shared instead of copying it again.
-// The TTL window is aligned with Node's SELF_ECHO_TTL_MS (5000ms); there is no
-// load-bearing reason for them to differ.
-const ECHO_WINDOW_MS = 5000;
-/** Cap on tracked sends, in case loopback echoes never arrive to consume them. */
-const ECHO_MAX_ENTRIES = 256;
-
-/** A cheap, exact key for a datagram's bytes (length-tagged binary string). */
-function echoKey(data: Uint8Array): string {
-  let binary = "";
-  for (let i = 0; i < data.length; i++) {
-    binary += String.fromCharCode(data[i] as number);
-  }
-  return `${data.length}:${binary}`;
-}
+// shared with the sibling Node transport via the pure `EchoSuppressor` in
+// dns-sd-shared: an FNV-1a fingerprint keyed into a Map, consumed once per send
+// and bounded by both a TTL window and an entry cap. This replaces the earlier
+// full-datagram string key (O(n^2) build, ~64 KB per message) with a fixed-size
+// fingerprint and O(1) lookup, matching Node byte-for-byte in behaviour.
 
 /** A UDP-multicast {@link DatagramTransport} implemented with Deno's socket API. */
 export class DenoTransport implements DatagramTransport {
@@ -104,12 +90,12 @@ export class DenoTransport implements DatagramTransport {
   private closed = false;
 
   // Transport-level self-echo suppression: multicast loopback delivers our own
-  // datagrams back to us. We record the bytes of everything we send and drop a
-  // matching received datagram exactly once. This lets `localAddresses()` return
-  // an empty/loopback value (so multiple nodes can share one host without the
-  // engine's IP-based own-echo filter hiding siblings) while still not
+  // datagrams back to us. We record a fingerprint of everything we send and drop
+  // a matching received datagram exactly once. This lets `localAddresses()`
+  // return an empty/loopback value (so multiple nodes can share one host without
+  // the engine's IP-based own-echo filter hiding siblings) while still not
   // reprocessing our own traffic.
-  private readonly recentSends: { key: string; at: number }[] = [];
+  private readonly echoes = new EchoSuppressor();
 
   constructor(options: DenoTransportOptions = {}) {
     this.family = options.family ?? "IPv4";
@@ -206,31 +192,12 @@ export class DenoTransport implements DatagramTransport {
 
   /** Record the bytes of an outgoing datagram for later echo suppression. */
   private rememberSend(data: Uint8Array): void {
-    const now = Date.now();
-    this.pruneSends(now);
-    this.recentSends.push({ key: echoKey(data), at: now });
-    // Bound memory if echoes never come back (e.g. loopback disabled).
-    if (this.recentSends.length > ECHO_MAX_ENTRIES) this.recentSends.shift();
+    this.echoes.remember(data);
   }
 
   /** Whether `data` matches a datagram we recently sent (consumes the match). */
   private isOwnEcho(data: Uint8Array): boolean {
-    const now = Date.now();
-    this.pruneSends(now);
-    const key = echoKey(data);
-    const index = this.recentSends.findIndex((e) => e.key === key);
-    if (index === -1) return false;
-    this.recentSends.splice(index, 1);
-    return true;
-  }
-
-  private pruneSends(now: number): void {
-    while (
-      this.recentSends.length > 0 &&
-      now - (this.recentSends[0]?.at ?? now) > ECHO_WINDOW_MS
-    ) {
-      this.recentSends.shift();
-    }
+    return this.echoes.consume(data);
   }
 
   async setMulticastTtl(ttl: number): Promise<void> {
