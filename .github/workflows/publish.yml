@@ -1,0 +1,191 @@
+name: Publish
+
+# Publishes every @momics/dns-sd package to its registry when a version tag is
+# pushed (e.g. `git tag v0.1.0 && git push origin v0.1.0`).
+#
+#   npm     → @momics/dns-sd-shared, @momics/dns-sd-node, @momics/dns-sd-tauri
+#   JSR     → @momics/dns-sd-shared, @momics/dns-sd-deno
+#   crates  → tauri-plugin-dns-sd  (packages/dns-sd-tauri)
+#
+# Unlike momics/iroh-http there are no prebuilt native binaries: the Node/Deno
+# packages are pure TypeScript and the Tauri plugin publishes from source, so no
+# build-artifact download or checksum step is needed.
+#
+# Auth:
+#   npm    — Trusted Publishers (OIDC, id-token: write); no NPM_TOKEN.
+#   JSR    — GitHub Actions publishing (OIDC, id-token: write); no token.
+#   crates — CARGO_REGISTRY_TOKEN repo secret.
+#
+# Every publish step is idempotent: a package version that already exists is
+# treated as success, so re-running (or a partial-failure retry) is safe.
+#
+# Manual re-publish: Actions -> Publish -> Run workflow, choosing which registry.
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Which registries to publish"
+        required: false
+        default: "all"
+        type: choice
+        options: [all, npm, jsr, crates]
+
+permissions:
+  contents: read
+  id-token: write # npm --provenance (Trusted Publishers) + JSR OIDC
+
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # ── 0. Verify ─────────────────────────────────────────────────────────────────
+  # Build + typecheck the whole workspace, and (on a tag) assert every package
+  # version matches the tag so we never ship mismatched versions.
+  verify:
+    name: Verify before publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - run: npm ci
+
+      - name: Check versions match the tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME#v}"
+          echo "Tag version: $TAG"
+          fail=0
+          check() { # <label> <actual>
+            if [ "$2" != "$TAG" ]; then
+              echo "::error::$1 version '$2' does not match tag '$TAG'"
+              fail=1
+            else
+              echo "ok: $1 = $2"
+            fi
+          }
+          check "dns-sd-shared (npm)"  "$(node -p "require('./packages/dns-sd-shared/package.json').version")"
+          check "dns-sd-node   (npm)"  "$(node -p "require('./packages/dns-sd-node/package.json').version")"
+          check "dns-sd-tauri  (npm)"  "$(node -p "require('./packages/dns-sd-tauri/package.json').version")"
+          check "dns-sd-shared (jsr)"  "$(node -p "require('./packages/dns-sd-shared/deno.json').version")"
+          check "dns-sd-deno   (jsr)"  "$(node -p "require('./packages/dns-sd-deno/deno.json').version")"
+          check "tauri-plugin-dns-sd (crate)" \
+            "$(sed -n 's/^version = "\(.*\)"/\1/p' packages/dns-sd-tauri/Cargo.toml | head -n1)"
+          exit $fail
+
+      - name: Build shared TypeScript
+        run: npm run build --workspace @momics/dns-sd-shared
+
+      - name: Typecheck workspace
+        run: npm run typecheck
+
+  # ── 1. Publish Rust crate ─────────────────────────────────────────────────────
+  # --no-verify: the Tauri plugin links system libraries (glib/gtk/webkit) that
+  # aren't present on the publish runner; compilation is already proven by the
+  # Tauri plugin CI workflow (cargo build/test on desktop matrix).
+  publish-crates:
+    name: Publish Rust crate
+    runs-on: ubuntu-latest
+    needs: verify
+    if: ${{ github.event.inputs.target == null || github.event.inputs.target == 'all' || github.event.inputs.target == 'crates' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Publish tauri-plugin-dns-sd
+        working-directory: packages/dns-sd-tauri
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          output=$(cargo publish --no-verify 2>&1) && exit 0
+          echo "$output"
+          if echo "$output" | grep -qi 'already uploaded\|already exists'; then
+            echo "Already published, skipping"
+          else
+            exit 1
+          fi
+
+  # ── 2. Publish npm packages ────────────────────────────────────────────────────
+  # Trusted Publishers (OIDC) — NB: no `registry-url` on setup-node, otherwise it
+  # writes an .npmrc that suppresses the OIDC exchange and publishes anonymously.
+  # Order: shared first (node & tauri depend on it).
+  publish-npm:
+    name: Publish npm packages
+    runs-on: ubuntu-latest
+    needs: verify
+    if: ${{ github.event.inputs.target == null || github.event.inputs.target == 'all' || github.event.inputs.target == 'npm' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - run: npm ci
+
+      - name: Build packages
+        run: |
+          npm run build --workspace @momics/dns-sd-shared
+          npm run build --workspace @momics/dns-sd-node
+          npm run build --workspace @momics/dns-sd-tauri
+
+      - name: Publish @momics/dns-sd-shared
+        run: |
+          output=$(npm publish --workspace @momics/dns-sd-shared --access public --provenance 2>&1) && exit 0
+          echo "$output"
+          echo "$output" | grep -qi 'previously published\|cannot publish over' && echo "Already published, skipping" || exit 1
+
+      - name: Publish @momics/dns-sd-node
+        run: |
+          output=$(npm publish --workspace @momics/dns-sd-node --access public --provenance 2>&1) && exit 0
+          echo "$output"
+          echo "$output" | grep -qi 'previously published\|cannot publish over' && echo "Already published, skipping" || exit 1
+
+      - name: Publish @momics/dns-sd-tauri
+        run: |
+          output=$(npm publish --workspace @momics/dns-sd-tauri --access public --provenance 2>&1) && exit 0
+          echo "$output"
+          echo "$output" | grep -qi 'previously published\|cannot publish over' && echo "Already published, skipping" || exit 1
+
+  # ── 3. Publish JSR packages ────────────────────────────────────────────────────
+  # JSR OIDC — no token. Order: shared first (deno resolves it as a workspace
+  # sibling and JSR requires the dependency to already exist).
+  publish-jsr:
+    name: Publish JSR packages
+    runs-on: ubuntu-latest
+    needs: verify
+    if: ${{ github.event.inputs.target == null || github.event.inputs.target == 'all' || github.event.inputs.target == 'jsr' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Publish @momics/dns-sd-shared to JSR
+        working-directory: packages/dns-sd-shared
+        run: |
+          output=$(deno publish 2>&1) && exit 0
+          echo "$output"
+          echo "$output" | grep -qi 'already exists\|already published' && echo "Already published, skipping" || exit 1
+
+      - name: Publish @momics/dns-sd-deno to JSR
+        working-directory: packages/dns-sd-deno
+        run: |
+          output=$(deno publish 2>&1) && exit 0
+          echo "$output"
+          echo "$output" | grep -qi 'already exists\|already published' && echo "Already published, skipping" || exit 1
