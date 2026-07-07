@@ -122,8 +122,11 @@ jobs:
       - name: Install Linux system dependencies
         run: |
           # Drop GitHub's flaky packages.microsoft.com apt source (serves an
-          # invalid InRelease → `apt-get update` exits 100) before updating.
-          sudo rm -f /etc/apt/sources.list.d/*microsoft*.list
+          # invalid InRelease → `apt-get update` exits 100) before updating. On
+          # Ubuntu 24.04 it's a deb822 *.sources file (e.g. azure-cli) that a
+          # *microsoft*.list glob misses, so remove every source referencing it
+          # regardless of file name or format.
+          sudo sh -c 'grep -rlZ "packages\.microsoft\.com" /etc/apt/sources.list.d 2>/dev/null | xargs -0 -r rm -f' || true
           sudo apt-get update
           sudo apt-get install -y \
             libwebkit2gtk-4.1-dev \
