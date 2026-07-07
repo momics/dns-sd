@@ -255,8 +255,44 @@ CI typechecks, lints and format-checks the workspace, runs the shared suite
 under **both** Deno and Node (to guarantee runtime-neutrality), runs the Node
 and Deno runtime unit tests, and builds/tests the Tauri Rust plugin on Linux,
 macOS and Windows. The env-gated real-network and interop tests are intentionally
-**not** run in CI (they require working multicast). There is no publishing/
-release workflow.
+**not** run in CI (they require working multicast).
+
+## Publishing / releasing
+
+Releases are driven by pushing a version tag. The
+[`Publish`](.github/workflows/publish.yml) workflow then fans out to every
+registry:
+
+| Package | npm | JSR | crates.io |
+| --- | :-: | :-: | :-: |
+| `@momics/dns-sd-shared` | ✅ | ✅ | – |
+| `@momics/dns-sd-node` | ✅ | – | – |
+| `@momics/dns-sd-deno` | – | ✅ | – |
+| `@momics/dns-sd-tauri` (crate `tauri-plugin-dns-sd`) | ✅ | – | ✅ |
+
+To cut a release, set the same version in every package
+(`packages/*/package.json`, `packages/*/deno.json` and
+`packages/dns-sd-tauri/Cargo.toml`), commit, then:
+
+```sh
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+The workflow verifies that all package versions match the tag before it
+publishes anything, and every publish step is idempotent (an already-published
+version is treated as success), so retries and partial re-runs are safe. You can
+also re-run it manually from the Actions tab and scope it to a single registry.
+
+**One-time setup** (per registry, needs owner access — not automated):
+
+- **npm** — for each npm package add a *Trusted Publisher* (npmjs.com → package
+  Settings → Trusted Publishers) pointing at `momics/dns-sd` / `publish.yml`.
+  Publishing uses OIDC + provenance, so no `NPM_TOKEN` secret is stored.
+- **JSR** — create `@momics/dns-sd-shared` and `@momics/dns-sd-deno` on jsr.io
+  and link each to GitHub Actions publishing for this repo (OIDC, no token).
+- **crates.io** — add a `CARGO_REGISTRY_TOKEN` repository secret with publish
+  rights to `tauri-plugin-dns-sd`.
 
 ## Caveats (honest ones)
 
