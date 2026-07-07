@@ -11,7 +11,7 @@ exclude = ["/examples", "/dist-js", "/guest-js", "/node_modules"]
 links = "tauri-plugin-dns-sd"
 
 [dependencies]
-tauri = { version = "2.8.5" }
+tauri = { version = "2.8.5", default-features = false }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 thiserror = "2"
@@ -26,5 +26,5 @@ tokio-util = "0.7"
 tauri-plugin = { version = "2.4.0", features = ["build"] }
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dev-dependencies]
-tauri = { version = "2.8.5", features = ["test"] }
+tauri = { version = "2.8.5", default-features = false, features = ["test"] }
 tokio = { version = "1", features = ["rt", "rt-multi-thread", "time", "sync", "macros"] }

@@ -178,7 +178,17 @@ Deno.test("close immediately after construction with tuning options does not cra
 
 Deno.test("suppresses our own looped-back datagrams", async () => {
   const port = freeUdpPort();
-  const t = new DenoTransport({ port, localAddresses: [] });
+  // Disable multicast loopback so the `send(own)` below cannot also deliver its
+  // own multicast copy back to us: on hosts where loopback routing is active
+  // (e.g. GitHub's Linux runners) that echo would arrive *in addition* to the
+  // injected unicast copy, leaving two `own` datagrams for the single
+  // suppression credit and letting one leak through. The injected unicast
+  // datagrams below are unaffected by this setting.
+  const t = new DenoTransport({
+    port,
+    localAddresses: [],
+    multicastLoopback: false,
+  });
   try {
     const own = new Uint8Array([1, 2, 3, 4]);
     const peer = new Uint8Array([9, 9, 9, 9]);
