@@ -2,6 +2,17 @@
   "name": "@momics/dns-sd-tauri",
   "version": "0.1.0",
   "description": "Tauri v2 runtime for @momics/dns-sd — DNS-SD (mDNS / Bonjour / Zeroconf) service discovery and advertisement across desktop (Linux/macOS/Windows) and mobile (iOS + Android), via the OS resolver.",
+  "keywords": [
+    "dns-sd",
+    "mdns",
+    "bonjour",
+    "zeroconf",
+    "discovery",
+    "service-discovery",
+    "tauri",
+    "tauri-plugin",
+    "mobile"
+  ],
   "type": "module",
   "main": "./dist-js/index.js",
   "types": "./dist-js/index.d.ts",
@@ -36,6 +47,9 @@
     "@types/node": "^22.20.0",
     "esbuild": "^0.24.0",
     "typescript": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=18"
   },
   "publishConfig": { "access": "public" },
   "license": "(MIT OR Apache-2.0)",

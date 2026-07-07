@@ -2,6 +2,17 @@
   "name": "@momics/dns-sd-shared",
   "version": "0.1.0",
   "description": "Runtime-agnostic, standards-compliant DNS-SD (mDNS / RFC 6762 + 6763) foundation. No native dependencies.",
+  "keywords": [
+    "dns-sd",
+    "mdns",
+    "bonjour",
+    "zeroconf",
+    "discovery",
+    "service-discovery",
+    "multicast-dns",
+    "rfc6762",
+    "rfc6763"
+  ],
   "type": "module",
   "main": "./dist/src/index.js",
   "types": "./dist/src/index.d.ts",
@@ -33,6 +44,9 @@
   "dependencies": {},
   "devDependencies": {
     "typescript": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=18"
   },
   "publishConfig": { "access": "public" },
   "license": "(MIT OR Apache-2.0)",

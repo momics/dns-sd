@@ -2,6 +2,17 @@
   "name": "@momics/dns-sd-node",
   "version": "0.1.0",
   "description": "Node.js runtime adapter for @momics/dns-sd-shared: a UDP-multicast DatagramTransport (via node:dgram) driving the shared, standards-compliant mDNS / DNS-SD engine.",
+  "keywords": [
+    "dns-sd",
+    "mdns",
+    "bonjour",
+    "zeroconf",
+    "discovery",
+    "service-discovery",
+    "multicast-dns",
+    "node",
+    "dgram"
+  ],
   "type": "module",
   "main": "./dist/src/index.js",
   "types": "./dist/src/index.d.ts",

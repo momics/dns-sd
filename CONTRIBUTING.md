@@ -129,6 +129,34 @@ Notes:
 - Ensure CI is green.
 - By contributing you agree your work is dual-licensed under MIT and Apache-2.0.
 
+## Releasing
+
+Releases are cut from `main` by pushing a single version tag; the
+[`Publish`](.github/workflows/publish.yml) workflow fans out to npm, JSR and
+crates.io. Every package in the workspace shares one version.
+
+1. Update the `[Unreleased]` section of [CHANGELOG.md](./CHANGELOG.md) and rename
+   it to the new version.
+2. Set the **same** version in every manifest:
+   - `packages/*/package.json`
+   - `packages/dns-sd-shared/deno.json` and `packages/dns-sd-deno/deno.json`
+   - `packages/dns-sd-tauri/Cargo.toml`
+3. Commit, then tag and push:
+
+   ```bash
+   git tag v0.1.0
+   git push origin v0.1.0
+   ```
+
+The workflow first re-runs the full CI gate (JS suites under Deno + Node, the
+Tauri desktop matrix, and the mobile compile-checks) against the tag's SHA, then
+asserts that **every** manifest version — including `Cargo.toml` — matches the
+tag before publishing anything. A mismatch or a red build blocks the release.
+Each publish step is idempotent, so retries and single-registry re-runs (Actions
+→ Publish → Run workflow) are safe. See the README's
+[Publishing / releasing](./README.md#publishing--releasing) section for the
+one-time per-registry setup.
+
 ## License
 
 Dual-licensed under MIT ([LICENSE-MIT](./LICENSE-MIT)) or Apache-2.0
