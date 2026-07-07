@@ -6,8 +6,9 @@
  */
 
 const END = Symbol("fifo.end");
+const FAIL = Symbol("fifo.fail");
 
-type Slot<T> = T | typeof END;
+type Slot<T> = T | typeof END | typeof FAIL;
 
 class FixedFIFO<T> {
   buffer: Array<Slot<T> | undefined>;
@@ -50,6 +51,7 @@ export class FastFIFO<T> {
   private tail: FixedFIFO<T>;
   private resolve: ((value: Slot<T>) => void) | null = null;
   private closed = false;
+  private error: unknown = undefined;
 
   constructor(hwm = 16) {
     this.head = new FixedFIFO<T>(hwm);
@@ -93,6 +95,18 @@ export class FastFIFO<T> {
     this.enqueue(END);
   }
 
+  /**
+   * Fail the queue: iterators drain any buffered items and then throw `error`.
+   * Used to surface a producer-side error (e.g. a failed browse-start) to the
+   * consumer instead of silently ending the stream. A no-op once closed/failed.
+   */
+  fail(error: unknown): void {
+    if (this.closed) return;
+    this.closed = true;
+    this.error = error;
+    this.enqueue(FAIL);
+  }
+
   async *[Symbol.asyncIterator](): AsyncIterator<T> {
     for (;;) {
       const shifted = this.shift();
@@ -102,6 +116,7 @@ export class FastFIFO<T> {
           this.resolve = res;
         });
       if (value === END) return;
+      if (value === FAIL) throw this.error;
       yield value as T;
     }
   }

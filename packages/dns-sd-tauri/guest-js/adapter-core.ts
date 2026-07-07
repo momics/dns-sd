@@ -56,6 +56,7 @@ export interface BrowseHandleWire {
 export interface AdvertiseHandleWire {
   advertiseId: number;
   name: string;
+  fullName: string;
 }
 
 /** Decode the wire TXT map into the shared {@link TxtRecords} shape. */

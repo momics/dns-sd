@@ -613,7 +613,13 @@ class DnsSdPlugin: Plugin {
             listener.start(queue: self.sessionQueue)
         }
 
-        invoke.resolve(["advertiseId": advertiseId, "name": name])
+        // A transport-path-matching FQN (`Instance._type._proto.domain`, no
+        // trailing dot) so `advertise().fullName` is consistent across runtimes.
+        // Use `normalizeDomain` (retains `local`), not `listenerDomain` whose
+        // nil-means-local convention is only for NWListener.Service.
+        let domainLabel = normalizeDomain(args.service.domain ?? "local")
+        let fullName = "\(name).\(serviceType).\(domainLabel)"
+        invoke.resolve(["advertiseId": advertiseId, "name": name, "fullName": fullName])
     }
 
     @objc public func advertise_stop(_ invoke: Invoke) throws {
