@@ -8,8 +8,9 @@
  * as the Deno and Node.js runtime packages.
  *
  * On iOS the underlying `NWBrowser` reports discovered endpoints but does not
- * resolve their host/addresses without opening a connection, so browse events
- * there are emitted as `found` (never `resolved`). Desktop and Android resolve
+ * surface their host/addresses on its own; the plugin resolves each instance
+ * through `NetService` (Bonjour), so browse events are emitted as `found` and
+ * then `resolved` with host/port/addresses. Desktop, iOS and Android all resolve
  * fully. See the package README for the full platform matrix.
  *
  * @module

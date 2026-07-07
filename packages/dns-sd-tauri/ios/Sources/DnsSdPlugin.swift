@@ -59,6 +59,108 @@ struct AdvertiseStopArgs: Decodable {
     let advertiseId: UInt64
 }
 
+/**
+ * Resolves a discovered Bonjour instance to its host name, port and IP
+ * addresses via `NetService`.
+ *
+ * `NWBrowser` (used for discovery) only yields an opaque service endpoint and
+ * never surfaces host/port/addresses — Apple's Network.framework is designed to
+ * resolve lazily inside an `NWConnection`. To reach the same "resolved" fidelity
+ * the desktop (`mdns-sd`) and Android (`NsdManager`) backends provide, we run
+ * the discovered `name`/`type`/`domain` back through the classic Bonjour
+ * resolution API. `NetService` is delegate/run-loop based, so it is scheduled on
+ * the main run loop; callbacks are marshalled back to the plugin's queue.
+ */
+final class ServiceResolver: NSObject, NetServiceDelegate {
+    let key: String
+    private let netService: NetService
+    private let timeout: TimeInterval
+    private let onResolved: (String, String?, Int?, [String]) -> Void
+    private let onFailed: (String) -> Void
+    private var settled = false
+
+    init(
+        key: String,
+        domain: String,
+        type: String,
+        name: String,
+        timeout: TimeInterval,
+        onResolved: @escaping (String, String?, Int?, [String]) -> Void,
+        onFailed: @escaping (String) -> Void
+    ) {
+        self.key = key
+        self.timeout = timeout
+        self.onResolved = onResolved
+        self.onFailed = onFailed
+        self.netService = NetService(domain: domain, type: type, name: name)
+        super.init()
+        self.netService.delegate = self
+    }
+
+    func start() {
+        DispatchQueue.main.async {
+            self.netService.schedule(in: .main, forMode: .common)
+            self.netService.resolve(withTimeout: self.timeout)
+        }
+    }
+
+    func cancel() {
+        DispatchQueue.main.async {
+            self.netService.stop()
+            self.netService.remove(from: .main, forMode: .common)
+        }
+    }
+
+    func netServiceDidResolveAddress(_ sender: NetService) {
+        if settled { return }
+        settled = true
+        let addresses = ServiceResolver.parseAddresses(sender.addresses)
+        let host = sender.hostName
+        let port = sender.port >= 0 ? sender.port : nil
+        sender.stop()
+        sender.remove(from: .main, forMode: .common)
+        onResolved(key, host, port, addresses)
+    }
+
+    func netService(_ sender: NetService, didNotResolve errorDict: [String: NSNumber]) {
+        if settled { return }
+        settled = true
+        sender.remove(from: .main, forMode: .common)
+        onFailed(key)
+    }
+
+    /** Turn `NetService.addresses` (raw `sockaddr` blobs) into numeric IP strings. */
+    static func parseAddresses(_ data: [Data]?) -> [String] {
+        guard let data else { return [] }
+        var out = Set<String>()
+        for datum in data {
+            datum.withUnsafeBytes { (raw: UnsafeRawBufferPointer) in
+                guard let base = raw.baseAddress, raw.count >= MemoryLayout<sockaddr>.size else {
+                    return
+                }
+                let sa = base.assumingMemoryBound(to: sockaddr.self)
+                var hostBuf = [CChar](repeating: 0, count: Int(NI_MAXHOST))
+                let status = getnameinfo(
+                    sa,
+                    socklen_t(datum.count),
+                    &hostBuf,
+                    socklen_t(hostBuf.count),
+                    nil,
+                    0,
+                    NI_NUMERICHOST
+                )
+                if status == 0 {
+                    let text = String(cString: hostBuf)
+                    // Drop any IPv6 zone/scope suffix (e.g. "fe80::1%en0").
+                    let cleaned = text.split(separator: "%").first.map(String.init) ?? text
+                    out.insert(cleaned)
+                }
+            }
+        }
+        return out.sorted()
+    }
+}
+
 @objc(DnsSdPlugin)
 class DnsSdPlugin: Plugin {
     private var nextBrowseId: UInt64 = 1
@@ -76,6 +178,16 @@ class DnsSdPlugin: Plugin {
         let channel: Channel
         var services: [String: ServiceSnapshot] = [:]
         var timeoutWorkItem: DispatchWorkItem?
+        /** Host/port/addresses obtained by resolving a discovered instance. */
+        var resolved: [String: ResolvedInfo] = [:]
+        /** In-flight resolutions, keyed by instance full name (also used to cancel). */
+        var resolvers: [String: ServiceResolver] = [:]
+
+        struct ResolvedInfo {
+            let host: String?
+            let port: Int?
+            let addresses: [String]
+        }
 
         init(id: UInt64, browser: NWBrowser, channel: Channel) {
             self.id = id
@@ -225,8 +337,11 @@ class DnsSdPlugin: Plugin {
         var payload = JSObject()
         payload["name"] = name
         payload["fullName"] = fullName
-        payload["host"] = nil
-        payload["port"] = nil
+        // Unresolved until the OS resolver returns a host/port/addresses. Emit
+        // explicit JSON `null` (not an absent key) so the guest-js binding
+        // classifies this as `found` rather than a resolved event.
+        payload["host"] = NSNull()
+        payload["port"] = NSNull()
         payload["serviceType"] = serviceType
         payload["protocol"] = protocolName
         payload["domain"] = normalized
@@ -244,12 +359,32 @@ class DnsSdPlugin: Plugin {
 
         var nextServices: [String: ServiceSnapshot] = [:]
         for result in results {
-            guard let snapshot = makeSnapshot(from: result) else { continue }
+            guard var snapshot = makeSnapshot(from: result) else { continue }
+            // Fold in any host/port/addresses we've already resolved for this
+            // instance so a periodic browse refresh never reverts it to `found`.
+            if let info = session.resolved[snapshot.key] {
+                snapshot = applyResolved(to: snapshot, info)
+            }
             nextServices[snapshot.key] = snapshot
 
             let shouldEmit = session.services[snapshot.key]?.signature != snapshot.signature
             if shouldEmit {
                 emitBrowseService(session: session, payload: snapshot.payload)
+            }
+
+            // Kick off native resolution once per instance to fill host/port/
+            // addresses. `NWBrowser` yields an opaque endpoint, so we resolve it
+            // through `NetService` (Bonjour) to reach desktop/Android parity.
+            if session.resolved[snapshot.key] == nil,
+               session.resolvers[snapshot.key] == nil,
+               case let .service(name, type, domain, _) = result.endpoint {
+                startResolving(
+                    browseId: browseId,
+                    key: snapshot.key,
+                    name: name,
+                    type: type,
+                    domain: domain
+                )
             }
         }
 
@@ -258,14 +393,97 @@ class DnsSdPlugin: Plugin {
             removedPayload["isActive"] = false
             removedPayload["lastSeenMs"] = Int64(nowMs())
             emitBrowseService(session: session, payload: removedPayload)
+            // Drop resolution state for departed instances.
+            session.resolved.removeValue(forKey: key)
+            session.resolvers.removeValue(forKey: key)?.cancel()
         }
 
         session.services = nextServices
     }
 
+    /** Merge resolved host/port/addresses into a snapshot, refreshing its signature. */
+    private func applyResolved(
+        to snapshot: ServiceSnapshot,
+        _ info: BrowseSession.ResolvedInfo
+    ) -> ServiceSnapshot {
+        var payload = snapshot.payload
+        payload["host"] = info.host.map { $0 as Any } ?? NSNull()
+        payload["port"] = info.port.map { $0 as Any } ?? NSNull()
+        payload["addresses"] = info.addresses
+        let addrState = info.addresses.joined(separator: ",")
+        let signature = "\(snapshot.signature)|\(info.host ?? "")|\(info.port ?? -1)|\(addrState)"
+        return ServiceSnapshot(key: snapshot.key, signature: signature, payload: payload)
+    }
+
+    /** Start resolving a discovered instance via `NetService` (on the main run loop). */
+    private func startResolving(
+        browseId: UInt64,
+        key: String,
+        name: String,
+        type: String,
+        domain: String
+    ) {
+        guard let session = browseSessions[browseId] else { return }
+        let nsType = type.hasSuffix(".") ? type : type + "."
+        let nsDomain = domain.isEmpty
+            ? "local."
+            : (domain.hasSuffix(".") ? domain : domain + ".")
+
+        let resolver = ServiceResolver(
+            key: key,
+            domain: nsDomain,
+            type: nsType,
+            name: name,
+            timeout: 5.0,
+            onResolved: { [weak self] key, host, port, addresses in
+                self?.sessionQueue.async {
+                    self?.applyResolution(
+                        browseId: browseId,
+                        key: key,
+                        host: host,
+                        port: port,
+                        addresses: addresses
+                    )
+                }
+            },
+            onFailed: { [weak self] key in
+                self?.sessionQueue.async {
+                    self?.browseSessions[browseId]?.resolvers.removeValue(forKey: key)
+                }
+            }
+        )
+        session.resolvers[key] = resolver
+        resolver.start()
+    }
+
+    /** Apply a completed resolution: cache it and emit a `resolved` snapshot. */
+    private func applyResolution(
+        browseId: UInt64,
+        key: String,
+        host: String?,
+        port: Int?,
+        addresses: [String]
+    ) {
+        guard let session = browseSessions[browseId] else { return }
+        session.resolvers.removeValue(forKey: key)
+        // Ignore results for an instance that departed while resolving.
+        guard let base = session.services[key] else { return }
+
+        let info = BrowseSession.ResolvedInfo(host: host, port: port, addresses: addresses)
+        session.resolved[key] = info
+
+        let resolvedSnapshot = applyResolved(to: base, info)
+        if session.services[key]?.signature != resolvedSnapshot.signature {
+            session.services[key] = resolvedSnapshot
+            emitBrowseService(session: session, payload: resolvedSnapshot.payload)
+        }
+    }
+
     private func stopBrowseSession(browseId: UInt64, reason: String) {
         guard let session = browseSessions.removeValue(forKey: browseId) else { return }
         session.timeoutWorkItem?.cancel()
+        for (_, resolver) in session.resolvers { resolver.cancel() }
+        session.resolvers.removeAll()
         session.browser.cancel()
         emitBrowseStopped(session: session, reason: reason)
         debugLog("[dns-sd] stopped browse \(browseId): \(reason)")

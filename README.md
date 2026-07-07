@@ -51,16 +51,17 @@ Either way, callers get the exact same `browse` / `advertise` API.
 | Linux    | Node.js, Deno, Tauri (desktop) | ✅ full | raw UDP multicast |
 | macOS    | Node.js, Deno, Tauri (desktop) | ✅ full | raw UDP multicast (see [interop notes](#real-network--cross-runtime-verification)) |
 | Windows  | Node.js, Deno, Tauri (desktop) | ✅ full | raw UDP multicast |
-| iOS      | Tauri               | ⚠️ partial | via `NWBrowser`/`NWListener`; see limitations below |
+| iOS      | Tauri               | ✅ full | via `NWBrowser`/`NWListener` + `NetService` resolution |
 | Android  | Tauri               | ⚠️ partial | via `NsdManager`; see limitations below |
 
 **Mobile limitations** (honest — these follow directly from the OS APIs, see the
 [Tauri package README](./packages/dns-sd-tauri/README.md#platform-matrix--limitations)):
 
-- **iOS (`NWBrowser`)** reports discovered endpoints and their TXT records but
-  does **not** resolve host/addresses without opening a connection. Browse
-  events on iOS are therefore emitted as `found` (never `resolved`), with
-  `host`/`port` `null` and `addresses` empty. TXT data is still delivered.
+- **iOS (`NWBrowser` + `NetService`)** discovers endpoints and their TXT records
+  with `NWBrowser`, then resolves each instance's host name, port and IP
+  addresses through `NetService` (Bonjour). Browse events are emitted as `found`
+  first, then `resolved` once host/port/addresses are available — matching every
+  other platform.
 - **Android (`NsdManager`)** owns the published host name and only supports the
   `local` domain, so a custom `host`/`domain` on `advertise` is ignored. It
   cannot represent a bare TXT key distinctly from an empty value, so both are

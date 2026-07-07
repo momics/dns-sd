@@ -145,21 +145,23 @@ Plain `string` inputs to `advertise` are UTF-8 encoded (RFC 6763 §6.5).
 
 ## Platform matrix & limitations
 
-| Feature                       | Desktop (`mdns-sd`) | iOS (`NWBrowser`)     | Android (`NsdManager`)     |
+| Feature                       | Desktop (`mdns-sd`) | iOS (`NWBrowser`+`NetService`) | Android (`NsdManager`)     |
 | ----------------------------- | ------------------- | --------------------- | -------------------------- |
 | Browse / advertise            | ✅                  | ✅                    | ✅                         |
 | TXT records                   | ✅ (3 states)       | ✅ (3 states)         | ⚠️ bare-key vs empty merged |
 | Subtypes (`_sub`)             | ✅                  | ⚠️ accepted, not filtered | ⚠️ accepted, ignored     |
 | Custom `host`                 | ✅                  | ⚠️ limited            | ❌ chosen by OS            |
 | Custom `domain`               | ✅ (non-`local`)    | ⚠️ limited            | ❌ `local` only            |
-| Host/address resolution on browse | ✅              | ❌ `found` only\*     | ✅                         |
+| Host/address resolution on browse | ✅              | ✅                    | ✅                         |
 | Browse timeout / abort        | ✅ (shared layer)   | ✅                    | ✅                         |
 | `removed` (isActive:false)    | ✅                  | ✅                    | ✅                         |
 
-**\* iOS:** `NWBrowser` reports discovered endpoints and their TXT records but
-does **not** resolve host/addresses without opening a connection. Browse events
-on iOS are therefore emitted as `found` (never `resolved`), with `host`/`port`
-`null` and `addresses` empty. TXT data is still delivered.
+**iOS:** `NWBrowser` discovers endpoints and their TXT records but does not
+surface host/addresses on its own (Network.framework resolves lazily inside a
+connection). To reach desktop/Android parity the plugin resolves each discovered
+instance through `NetService` (Bonjour), emitting `found` first and then
+`resolved` once host name, port and IP addresses are available. TXT data is
+delivered throughout.
 
 **Android:** `NsdManager` owns the published host name and only supports the
 `local` domain, so `host`/`domain` on `advertise` are ignored. It also cannot
