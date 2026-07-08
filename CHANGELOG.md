@@ -38,10 +38,11 @@ published yet; this section becomes the notes for the first tagged release.
   same-length placeholders so all framing, compression, TTLs and record order
   are preserved byte-for-byte — plus a spec-derived goodbye (TTL=0, RFC 6762
   §10.1). Every vector is decoded to a committed structure and round-tripped
-  under both Deno and Node; the spec-derived goodbye is additionally re-encoded
-  byte-for-byte, while captured vectors pin meaning rather than exact bytes.
-  Live Avahi captures are left for a human on Linux (Avahi was unavailable in
-  the capture environment) (#38).
+  under both Deno and Node; the captured announcement and the spec-derived
+  goodbye are additionally pinned to their exact bytes (the announcement's
+  layout is canonical for this codec), while the captured browse query pins
+  meaning rather than exact bytes. Live Avahi captures are left for a human on
+  Linux (Avahi was unavailable in the capture environment) (#38).
 - **Type-level API tests.** A dependency-free `*.type-test.ts` suite
   (`packages/dns-sd-shared/test/api.type-test.ts`) that locks the *type
   behavior* of the public API — the `ServiceAnnouncement` per-variant
