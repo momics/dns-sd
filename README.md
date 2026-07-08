@@ -58,6 +58,8 @@ const handle = await advertise({
 **Browse** for services — an async iterator of lifecycle events:
 
 ```typescript
+import { browse } from "@momics/dns-sd-node";
+
 for await (const svc of browse({
   service: { type: "http", protocol: "tcp" },
   timeoutMs: 5000, // omit for a continuous browse
@@ -77,7 +79,7 @@ for await (const svc of browse({
 
 **Clean up** when you're done:
 
-```typescript
+```typescript no-check
 await handle.stop(); // send a goodbye and unregister
 await close();       // tear down the shared socket
 ```

@@ -41,7 +41,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: denoland/setup-deno@v2
         with:
-          deno-version: v2.x
+          deno-version: v2.9
 
       # Runs the Deno.bench hot-path suite and fails if any path regresses past
       # its normalised baseline budget (bench/perf-baseline.json).

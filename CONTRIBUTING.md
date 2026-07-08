@@ -45,6 +45,7 @@ deno task check                # typecheck shared (source + tests)
 deno task check:deno-runtime   # typecheck the Deno runtime package
 deno task check:tauri          # typecheck the Tauri guest-js binding
 deno task check:docs           # JSDoc completeness on every public symbol
+deno task check:docs-examples  # type-check the READMEs' TS code blocks
 deno task check:api            # public API surface unchanged (frozen snapshot)
 deno task test                 # whole TS suite under Deno
 
@@ -59,6 +60,13 @@ cd packages/dns-sd-tauri && cargo clippy --all-targets && cargo test
 
 All of the above must be green. Real-network and cross-runtime interop tests
 are gated behind `DNS_SD_NETWORK_TESTS=1` and are run locally, not in CI.
+
+> **`check:docs-examples` needs Deno >= 2.9.** It type-checks the fenced `ts` /
+> `typescript` blocks in every README against the real public API. A block that
+> is deliberately illustrative (a partial fragment or a bare interface sketch)
+> opts out by adding `no-check` to its fence info string — ` ```ts no-check `.
+> Prefer fixing a block to compile over opting it out. Older Deno rejects the
+> checker's throwaway config and the task fails fast with a clear message.
 
 > **New here?** Read [`AGENTS.md`](./AGENTS.md) first — it is the constitution
 > this repo is governed by (the definition of "done", the frozen public API, the

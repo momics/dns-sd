@@ -35,7 +35,7 @@ jobs:
           node-version: 24
       - uses: denoland/setup-deno@v2
         with:
-          deno-version: v2.x
+          deno-version: v2.9
 
       - run: npm ci
 
@@ -54,6 +54,9 @@ jobs:
       - name: deno doc --lint (public JSDoc completeness)
         run: deno task check:docs
 
+      - name: Executable README examples type-check against the real API
+        run: deno task check:docs-examples
+
       - name: Public API surface unchanged (frozen snapshot)
         run: deno task check:api
 
@@ -71,7 +74,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: denoland/setup-deno@v2
         with:
-          deno-version: v2.x
+          deno-version: v2.9
       # Runs the shared, dns-sd-deno and tauri guest-js suites through the shared
       # harness. Real-network conformance is gated behind DNS_SD_NETWORK_TESTS
       # and reported as skipped here.

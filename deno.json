@@ -5,7 +5,7 @@
   ],
   "nodeModulesDir": "none",
   "fmt": {
-    "include": ["packages"],
+    "include": ["packages", "scripts"],
     "exclude": [
       "**/node_modules",
       "**/dist",
@@ -21,7 +21,7 @@
     ]
   },
   "lint": {
-    "include": ["packages"],
+    "include": ["packages", "scripts"],
     "exclude": [
       "**/node_modules",
       "**/dist",
@@ -42,6 +42,7 @@
     "check:deno-runtime": "deno task --cwd packages/dns-sd-deno check",
     "check:tauri": "deno task --cwd packages/dns-sd-tauri check",
     "check:docs": "deno task --cwd packages/dns-sd-shared check:docs",
+    "check:docs-examples": "deno run -A scripts/check-docs-examples.ts",
     "check:api": "deno task --cwd packages/dns-sd-shared check:api",
     "snapshot:api": "deno task --cwd packages/dns-sd-shared snapshot:api",
     "bench": "deno task --cwd packages/dns-sd-shared bench",
