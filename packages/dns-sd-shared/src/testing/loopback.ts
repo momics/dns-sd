@@ -30,11 +30,13 @@ export class VirtualBus {
   /** Total datagrams that have crossed the bus (useful for test assertions). */
   packetCount = 0;
 
+  /** Attach a member and return its detach function. */
   private attach(member: BusMember): () => void {
     this.members.add(member);
     return () => this.members.delete(member);
   }
 
+  /** Deliver a multicast datagram to every other attached member. */
   private publish(from: BusMember, data: Uint8Array): void {
     this.packetCount++;
     for (const member of this.members) {
@@ -75,6 +77,7 @@ export class VirtualBus {
   }
 
   private counter = 0;
+  /** Allocate the next deterministic loopback IPv4 address. */
   private nextAddress(): string {
     this.counter++;
     return `10.0.0.${this.counter}`;
@@ -91,8 +94,11 @@ interface LoopbackConfig {
 
 /** A {@link DatagramTransport} attached to a {@link VirtualBus}. */
 export class LoopbackTransport implements DatagramTransport {
+  /** IP family exposed by this virtual transport. */
   readonly family: IpFamily;
+  /** Host name exposed by this virtual transport. */
   readonly hostname: string;
+  /** Virtual unicast address used as this node's source address. */
   readonly address: string;
 
   private readonly config: LoopbackConfig;
@@ -100,6 +106,7 @@ export class LoopbackTransport implements DatagramTransport {
   private readonly detach: () => void;
   private closed = false;
 
+  /** Attach a transport to a virtual bus configuration. */
   constructor(config: LoopbackConfig) {
     this.config = config;
     this.family = config.family;
@@ -113,11 +120,13 @@ export class LoopbackTransport implements DatagramTransport {
 
   private readonly iterator: AsyncIterator<ReceivedDatagram>;
 
+  /** Publish a datagram on the virtual bus. */
   send(data: Uint8Array): Promise<void> {
     if (!this.closed) this.config.send(data);
     return Promise.resolve();
   }
 
+  /** Receive the next virtual datagram, or `null` after close. */
   async receive(): Promise<ReceivedDatagram | null> {
     if (this.closed) return null;
     const { value, done } = await this.iterator.next();
@@ -125,10 +134,12 @@ export class LoopbackTransport implements DatagramTransport {
     return value;
   }
 
+  /** Return this transport's virtual local address. */
   localAddresses(): string[] {
     return [this.address];
   }
 
+  /** Detach from the virtual bus and close the receive queue. */
   close(): void {
     if (this.closed) return;
     this.closed = true;

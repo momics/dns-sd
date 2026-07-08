@@ -19,6 +19,7 @@ import {
   ResourceType,
 } from "../wire/types.ts";
 import type { ServiceAnnouncement } from "../types.ts";
+import type { MdnsBrowser } from "./engine.ts";
 import {
   nameKey,
   parseServiceName,
@@ -74,7 +75,8 @@ export interface BrowseContext {
   unregister(browser: Browser): void;
 }
 
-export class Browser {
+/** Active browser state machine for one DNS-SD service query. */
+export class Browser implements MdnsBrowser {
   private readonly ctx: BrowseContext;
   private readonly serviceLabels: string[];
   private readonly serviceKey: string;

@@ -11,7 +11,9 @@
 
 /** Thrown when a DNS message cannot be decoded because it is malformed. */
 export class WireError extends Error {
+  /** Stable error name for malformed DNS wire data. */
   override readonly name = "WireError";
+  /** Create a wire-format decode error. */
   constructor(message: string) {
     super(message);
   }
@@ -34,12 +36,15 @@ const MAX_LABEL_LENGTH = 63;
 /** Shared UTF-8 decoder for label bytes (RFC 6763 §4.1.1). */
 const UTF8_DECODER = new TextDecoder();
 
+/** Bounds-checked reader for DNS wire-format fields. */
 export class Reader {
+  /** Message bytes being read. */
   readonly bytes: Uint8Array;
   private readonly view: DataView;
   /** Current absolute read offset. */
   offset: number;
 
+  /** Create a reader at an optional absolute offset. */
   constructor(bytes: Uint8Array, offset = 0) {
     this.bytes = bytes;
     // Scope the DataView to the array's own region — `bytes.buffer` may be a
@@ -48,14 +53,17 @@ export class Reader {
     this.offset = offset;
   }
 
+  /** Total message length in bytes. */
   get length(): number {
     return this.bytes.byteLength;
   }
 
+  /** Bytes remaining from the current offset. */
   get remaining(): number {
     return this.bytes.byteLength - this.offset;
   }
 
+  /** Ensure `count` bytes can be read from the current offset. */
   private ensure(count: number): void {
     if (count < 0) {
       throw new WireError(`negative read length ${count}`);
@@ -68,6 +76,7 @@ export class Reader {
     }
   }
 
+  /** Read an unsigned 8-bit integer. */
   u8(): number {
     this.ensure(1);
     const value = this.view.getUint8(this.offset);
@@ -75,6 +84,7 @@ export class Reader {
     return value;
   }
 
+  /** Read an unsigned 16-bit integer in network byte order. */
   u16(): number {
     this.ensure(2);
     const value = this.view.getUint16(this.offset, false);
@@ -82,6 +92,7 @@ export class Reader {
     return value;
   }
 
+  /** Read an unsigned 32-bit integer in network byte order. */
   u32(): number {
     this.ensure(4);
     const value = this.view.getUint32(this.offset, false);

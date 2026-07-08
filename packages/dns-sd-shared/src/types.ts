@@ -70,6 +70,7 @@ export interface ServiceAnnouncementBase {
  * yet, so its host/port are unknown.
  */
 export interface ServiceFound extends ServiceAnnouncementBase {
+  /** Discriminant for a newly discovered, not-yet-resolved instance. */
   kind: "found";
   /** Always `null` until the instance is resolved. */
   host: null;
@@ -87,6 +88,7 @@ export interface ServiceFound extends ServiceAnnouncementBase {
  * {@link ServiceAnnouncement}).
  */
 export interface ServiceResolved extends ServiceAnnouncementBase {
+  /** Discriminant for an instance whose SRV target and port are known. */
   kind: "resolved";
   /** The target host name (from the `SRV` record). Guaranteed non-null. */
   host: string;
@@ -103,6 +105,7 @@ export interface ServiceResolved extends ServiceAnnouncementBase {
  * the same non-null host/port guarantee as {@link ServiceResolved}.
  */
 export interface ServiceUpdated extends ServiceAnnouncementBase {
+  /** Discriminant for a resolved instance whose data changed. */
   kind: "updated";
   /** The target host name (from the `SRV` record). Guaranteed non-null. */
   host: string;
@@ -119,6 +122,7 @@ export interface ServiceUpdated extends ServiceAnnouncementBase {
  * event, so `host`/`port` are informational and may be `null`.
  */
 export interface ServiceRemoved extends ServiceAnnouncementBase {
+  /** Discriminant for an instance removed by goodbye or cache expiry. */
   kind: "removed";
   /** The last known host name, or `null` if it was never resolved. */
   host: string | null;

@@ -16,6 +16,21 @@ published yet; this section becomes the notes for the first tagged release.
 
 ### Added
 
+- **Agent-convergence governance.** A constitution (`AGENTS.md`) plus
+  `.github/copilot-instructions.md` and `docs/` (`convergence.md`,
+  `api-design.md`, `testing-strategy.md`) that define an unambiguous "done", a
+  frozen public API, explicit non-goals, and the ratchets that keep the package
+  converging.
+- **JSDoc completeness gate.** `deno task check:docs` (`deno doc --lint`) fails
+  the build if any exported symbol on a public entrypoint lacks documentation;
+  every public symbol is now documented.
+- **Frozen public-API snapshot gate.** `deno task check:api` diffs the public
+  surface against a committed golden snapshot
+  (`packages/dns-sd-shared/api/dns-sd-shared.api.md`); `deno task snapshot:api`
+  re-baselines it deliberately. Both run in CI.
+- `MdnsBrowser` and `MdnsResponder` — documented public handle interfaces
+  returned by `MdnsEngine.browse` / `MdnsEngine.advertise`, replacing the leaked
+  internal classes in the engine's public signatures.
 - **Cross-runtime interop proof in CI.** A loopback (in-process `VirtualBus`,
   no multicast) advertise→browse interop test that decodes the actual bytes on
   the wire, run under both Deno and Node on every push. The real-multicast

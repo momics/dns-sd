@@ -40,6 +40,9 @@
     "test:tauri": "deno task --cwd packages/dns-sd-tauri test",
     "check": "deno task --cwd packages/dns-sd-shared check",
     "check:deno-runtime": "deno task --cwd packages/dns-sd-deno check",
-    "check:tauri": "deno task --cwd packages/dns-sd-tauri check"
+    "check:tauri": "deno task --cwd packages/dns-sd-tauri check",
+    "check:docs": "deno task --cwd packages/dns-sd-shared check:docs",
+    "check:api": "deno task --cwd packages/dns-sd-shared check:api",
+    "snapshot:api": "deno task --cwd packages/dns-sd-shared snapshot:api"
   }
 }

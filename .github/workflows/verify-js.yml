@@ -51,6 +51,12 @@ jobs:
           deno task check:deno-runtime
           deno task check:tauri
 
+      - name: deno doc --lint (public JSDoc completeness)
+        run: deno task check:docs
+
+      - name: Public API surface unchanged (frozen snapshot)
+        run: deno task check:api
+
       - name: Build shared package (dependency for tsc typecheck)
         run: npm run build --workspace @momics/dns-sd-shared
 
