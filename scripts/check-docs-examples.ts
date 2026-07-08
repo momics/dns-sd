@@ -41,10 +41,22 @@
  *   - `@momics/dns-sd-node`            → packages/dns-sd-node/src/index.ts
  *   - `@momics/dns-sd-tauri`           → packages/dns-sd-tauri/guest-js/index.ts
  *
- * `node:*` built-ins resolve through Deno's Node compatibility layer; the Tauri
- * binding's `@tauri-apps/api` dependency resolves from npm (pinned in
- * `deno.lock`). Because the target is the source tree, renaming or removing a
- * public export makes the corresponding example fail to type-check here.
+ * `node:*` built-ins resolve through Deno's Node compatibility layer. The Tauri
+ * binding's one third-party dependency, `@tauri-apps/api`, is redirected to a
+ * tiny local stub (`scripts/stubs/tauri-api-core.ts`) so the check never links
+ * that package from npm. Because every target is the local source tree, renaming
+ * or removing a public export makes the corresponding example fail here.
+ *
+ * ## Why the check runs from a temp dir inside the repo
+ *
+ * The generated config lives in a throwaway directory *under the repo root* and
+ * is deliberately **not** a workspace member, so Deno ignores the root
+ * `deno.json` (whose `nodeModulesDir: "none"` would otherwise forbid the Node
+ * type-resolution the `@momics/dns-sd-node` examples need). It sets
+ * `nodeModulesDir: "manual"` and symlinks the repo's `node_modules` (populated
+ * by `npm ci`, which CI already runs before this step) so `@types/node` and the
+ * Node built-ins resolve without any network access — the check is hermetic and
+ * reproduces exactly under Deno 2.9's config-discovery rules.
  *
  * @module
  */
@@ -61,19 +73,22 @@ const READMES = [
 /** The repository root, derived from this script's location (`<root>/scripts`). */
 const ROOT = new URL("..", import.meta.url).pathname.replace(/\/$/, "");
 
-/** Import map that redirects package names to their local source entrypoints. */
+/**
+ * Import map redirecting package names to their local source entrypoints,
+ * expressed relative to the generated config (which lives one directory below
+ * the repo root — see `main`).
+ */
 const IMPORTS: Record<string, string> = {
-  "@momics/dns-sd-shared": `${ROOT}/packages/dns-sd-shared/src/index.ts`,
+  "@momics/dns-sd-shared": "../packages/dns-sd-shared/src/index.ts",
   "@momics/dns-sd-shared/testing":
-    `${ROOT}/packages/dns-sd-shared/src/testing/index.ts`,
+    "../packages/dns-sd-shared/src/testing/index.ts",
   "@momics/dns-sd-shared/testing/harness":
-    `${ROOT}/packages/dns-sd-shared/src/testing/harness.ts`,
-  "@momics/dns-sd-shared/wire":
-    `${ROOT}/packages/dns-sd-shared/src/wire/index.ts`,
-  "@momics/dns-sd-deno": `${ROOT}/packages/dns-sd-deno/src/mod.ts`,
-  "@momics/dns-sd-node": `${ROOT}/packages/dns-sd-node/src/index.ts`,
-  "@momics/dns-sd-tauri": `${ROOT}/packages/dns-sd-tauri/guest-js/index.ts`,
-  "@tauri-apps/api/core": "npm:@tauri-apps/api@2/core",
+    "../packages/dns-sd-shared/src/testing/harness.ts",
+  "@momics/dns-sd-shared/wire": "../packages/dns-sd-shared/src/wire/index.ts",
+  "@momics/dns-sd-deno": "../packages/dns-sd-deno/src/mod.ts",
+  "@momics/dns-sd-node": "../packages/dns-sd-node/src/index.ts",
+  "@momics/dns-sd-tauri": "../packages/dns-sd-tauri/guest-js/index.ts",
+  "@tauri-apps/api/core": "../scripts/stubs/tauri-api-core.ts",
 };
 
 /**
@@ -179,12 +194,23 @@ async function main() {
     return;
   }
 
-  const tmpDir = await Deno.makeTempDir({ prefix: "dns-sd-docs-" });
+  // A throwaway config directory *under the repo root*. Being a non-workspace
+  // sibling of the root `deno.json` makes Deno ignore the workspace config
+  // (whose `nodeModulesDir: "none"` would forbid the Node type-resolution the
+  // node-runtime examples need). We symlink the repo's `node_modules` — already
+  // populated by `npm ci` in CI — so `@types/node` resolves offline.
+  const tmpDir = await Deno.makeTempDir({ dir: ROOT, prefix: ".docs-check-" });
+  await Deno.symlink(`${ROOT}/node_modules`, `${tmpDir}/node_modules`);
   const configPath = `${tmpDir}/deno.json`;
   await Deno.writeTextFile(
     configPath,
     JSON.stringify(
-      { compilerOptions: COMPILER_OPTIONS, imports: IMPORTS },
+      {
+        // Use the symlinked node_modules (never auto-install / hit the network).
+        nodeModulesDir: "manual",
+        compilerOptions: COMPILER_OPTIONS,
+        imports: IMPORTS,
+      },
       null,
       2,
     ),
