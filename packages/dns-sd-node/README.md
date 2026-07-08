@@ -1,16 +1,13 @@
 # @momics/dns-sd-node
 
-The **Node.js** runtime package for the `@momics/dns-sd` family. It supplies a
-UDP-multicast `DatagramTransport` (built on Node's [`node:dgram`][dgram]) to the
-runtime-agnostic [`@momics/dns-sd-shared`][shared] mDNS engine and re-exports the
-**identical public API**. No native dependencies, no Rust — Node has everything
-needed for raw multicast built in.
+Discover and advertise services on the local network from **Node.js** — the same
+`browse` / `advertise` / `close` API as every `@momics/dns-sd` package. Pure
+TypeScript, **no native dependencies**: Node has everything needed for raw mDNS
+multicast built in.
 
-- **Standards-compliant** mDNS / DNS-SD (RFC 6762 + RFC 6763) via the shared
-  engine (probing, conflict resolution, known-answer suppression, TTL cache,
-  goodbyes — all of it).
-- **Thin adapter**: this package is just the socket layer; all protocol logic
-  lives in the shared package and is proven by a common conformance suite.
+- **Standards-compliant** mDNS / DNS-SD (RFC 6762 + RFC 6763): probing, conflict
+  resolution, known-answer suppression, TTL cache, and goodbyes are all handled
+  for you.
 - **Continuous by default**: `browse` never times out unless you ask it to.
 
 ## Install
@@ -19,11 +16,10 @@ needed for raw multicast built in.
 npm i @momics/dns-sd-node
 ```
 
-> **Node desktop / server only.** This package needs raw UDP multicast sockets
-> and therefore does **not** work in browsers, and is not intended for mobile
-> (iOS/Android), where the OS owns the mDNS resolver — use a Tauri/native adapter
-> there instead. Node **18+** is required (ships with the built-in test runner
-> and modern `dgram`).
+> **Node desktop / server only.** This package needs raw UDP multicast sockets,
+> so it does **not** work in browsers, and is not intended for mobile
+> (iOS/Android), where the OS owns the mDNS resolver — use `@momics/dns-sd-tauri`
+> there instead. Node **18+** is required.
 
 ## Usage
 
@@ -80,7 +76,7 @@ await handle.stop();
 await close();
 ```
 
-### Managing the transport yourself
+### Advanced configuration
 
 The module-level `browse` / `advertise` / `close` wrap a lazily-created default
 transport. For finer control (a specific IP family, host name, interface set, or
@@ -122,16 +118,12 @@ mDNS uses **UDP multicast on port 5353** (group `224.0.0.251` for IPv4,
   networks disable multicast; discovery will silently find nothing there.
 - **Multiple hosts**: peers on different machines are distinguished by source
   address automatically, so cross-host discovery and advertising work out of the
-  box with the default settings (real interface addresses are advertised in the
-  A/AAAA records).
-- **Same host, multiple instances**: the shared engine ignores datagrams whose
-  source is one of *our own* addresses, so by default a browse in one process
-  won't discover an advertisement made by another process on the **same
-  machine** (they share the host's IP). For local-only testing where that is
-  desired, construct transports with `localAddresses: []`: this disables the
-  address-based self-filter (the transport still suppresses each socket's own
-  echoes) at the cost of advertising loopback addresses. This is exactly how the
-  conformance suite runs many nodes on one host.
+  box with the default settings.
+- **Same host, multiple instances**: by default a browse in one process won't
+  discover an advertisement made by another process on the **same machine** (they
+  share the host's IP and are treated as self-echo). For local-only testing where
+  that *is* what you want, construct transports with `localAddresses: []`. See
+  [docs/architecture.md](../../docs/architecture.md#running-multiple-instances-on-one-host).
 
 ## Testing
 
@@ -158,5 +150,4 @@ node packages/dns-sd-node/examples/advertise.mjs "Demo" 8080
 
 Dual-licensed under MIT or Apache-2.0, at your option.
 
-[dgram]: https://nodejs.org/api/dgram.html
 [shared]: https://github.com/momics/dns-sd/tree/main/packages/dns-sd-shared

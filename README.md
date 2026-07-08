@@ -103,14 +103,10 @@ may be a `string`, `Uint8Array`, `true`, or `null`; discovered values come back 
 
 ## How it works
 
-The mDNS protocol is implemented **once** in
-[`@momics/dns-sd-shared`](./packages/dns-sd-shared) — a hardened wire codec plus
-the probe/announce/conflict/cache/query engine, all pure TypeScript. Each runtime
-plugs a thin backend into it: Node and Deno a raw-UDP `DatagramTransport`, Tauri
-a `DnsSdAdapter` backed by the Rust/native plugin — `mdns-sd` on desktop, OS
-resolvers on mobile. Either way callers get the exact same API. See the
-package READMEs for the [backend seams](./packages/dns-sd-shared/README.md#backend-seams)
-and [Tauri architecture](./packages/dns-sd-tauri/README.md#architecture).
+The mDNS protocol is implemented **once**, in pure TypeScript; each runtime plugs
+a thin network backend into that shared engine, so every package exposes the
+exact same API. You don't need the details to use the library — if you're curious
+or want to add a runtime, see [docs/architecture.md](./docs/architecture.md).
 
 ## Contributing
 
