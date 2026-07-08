@@ -1,0 +1,66 @@
+name: Mutation
+
+# Mutation-testing ratchet (Stryker) for the pure-TypeScript core of
+# `@momics/dns-sd-shared`. Coverage proves lines *ran*; mutation testing proves
+# the tests actually *fail* when logic breaks — the highest-leverage guard against
+# coverage-gaming (see docs/testing-strategy.md and docs/convergence.md).
+#
+# This is an ENFORCED ratchet, not informational: Stryker's `thresholds.break`
+# (in stryker.conf.json) fails the job when the mutation score regresses below the
+# committed floor. Raising the floor is deliberate — re-run locally, then bump
+# `break` in the same PR. Node-only tool; it does not run under Deno.
+#
+# PRs are intentionally NOT gated here: the `command` test runner re-runs the full
+# tsc build + Node suite for every one of ~1900 mutants with no per-mutant coverage
+# isolation, so a run takes ~30 min locally and ~2 h on a 2-core GitHub runner —
+# far too slow for every PR. Instead we gate `main` on every merge, plus a nightly
+# schedule and on-demand `workflow_dispatch`. (Future option for PR-time signal:
+# Stryker `--incremental` only re-tests mutants in changed files, but needs the
+# incremental cache persisted across runs via actions/cache — deferred for now.)
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "**.md"
+      - "LICENSE*"
+      - ".editorconfig"
+      - ".gitignore"
+  schedule:
+    - cron: "0 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── Mutation score gate over @momics/dns-sd-shared/src (Node, Stryker) ────────
+  stryker:
+    name: Mutation score (Node · Stryker)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm ci
+
+      # Runs Stryker from the repo root (dependencies are hoisted to the root
+      # node_modules, which Stryker symlinks into each sandbox). The 'command'
+      # test runner rebuilds the mutated src via tsc and runs the shared Node
+      # suite through its custom cross-runtime harness. Fails when the score
+      # drops below `thresholds.break` in stryker.conf.json.
+      - name: Run mutation tests
+        run: npm run test:mutation
+
+      - name: Upload mutation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-report
+          path: reports/mutation/mutation.html
+          if-no-files-found: warn
