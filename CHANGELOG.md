@@ -16,6 +16,19 @@ published yet; this section becomes the notes for the first tagged release.
 
 ### Added
 
+- **Performance regression gate (hot paths).** A dependency-free `Deno.bench`
+  suite (`packages/dns-sd-shared/bench/`) covering the receive/send hot paths —
+  `wire/encode` + `wire/decode` on a representative DNS-SD browse response, the
+  record cache (`add` insert/expiry-scheduling and `knownAnswers` scan), and the
+  TXT codec — plus a committed baseline (`bench/perf-baseline.json`) and a gate
+  (`deno task perf:gate`, `scripts/perf-gate.ts`) wired into a dedicated CI job
+  (`.github/workflows/perf.yml`). The gate is hardware-independent (each
+  benchmark is normalised against an in-run calibration loop) and deliberately
+  coarse (fails only past a generous 4× budget), so it catches real
+  order-of-magnitude regressions on noisy shared runners without flaking on
+  micro-noise. Time-per-iteration is the tracked metric; per-op allocation
+  tracking is deferred until `Deno.bench` exposes it. Re-baseline deliberately
+  with `deno task perf:baseline` (#39).
 - **Type-level API tests.** A dependency-free `*.type-test.ts` suite
   (`packages/dns-sd-shared/test/api.type-test.ts`) that locks the *type
   behavior* of the public API — the `ServiceAnnouncement` per-variant

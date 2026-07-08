@@ -1,0 +1,49 @@
+name: Perf
+
+# Performance regression gate for the @momics/dns-sd-shared hot paths
+# (encode/decode, the record cache, TXT codec) — issue #39, AGENTS.md §5.
+#
+# The gate runs the Deno.bench suite (packages/dns-sd-shared/bench/) and compares
+# each hot path against the committed baseline in bench/perf-baseline.json. It is
+# deliberately COARSE and HARDWARE-INDEPENDENT: every benchmark is normalised
+# against an in-run calibration loop, and a path fails only when it is >4x its
+# normalised baseline. Shared CI runners are noisy, so this targets real,
+# order-of-magnitude regressions (a dropped fast path, an accidental O(n^2)) and
+# tolerates ordinary run-to-run jitter — a flaky gate would be worse than none.
+# See scripts/perf-gate.ts for the full rationale.
+#
+# Runs on its own job (not part of `deno task test`) so the bench workload never
+# slows or flakes the correctness suite.
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "**.md"
+      - "LICENSE*"
+      - ".editorconfig"
+      - ".gitignore"
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  perf-gate:
+    name: Perf gate (hot paths)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      # Runs the Deno.bench hot-path suite and fails if any path regresses past
+      # its normalised baseline budget (bench/perf-baseline.json).
+      - name: Perf regression gate
+        run: deno task perf:gate
