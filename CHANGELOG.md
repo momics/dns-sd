@@ -116,6 +116,12 @@ published yet; this section becomes the notes for the first tagged release.
 
 ### Changed
 
+- **Documentation restructured to be usage-first.** The package READMEs now lead
+  with install → setup → usage instead of internals, and the duplicated
+  architecture/networking prose (backend seams, the Tauri layer diagram, the
+  same-host `localAddresses: []` mechanics, conformance-suite design) is
+  consolidated into a single new [`docs/architecture.md`](./docs/architecture.md)
+  that each README links to. No public API or behaviour changed.
 - The `AGENTS.md` §5 ratchet table now lists every installed anti-drift gate —
   the original six (API surface, JSDoc, types, fmt/lint, cross-runtime tests)
   plus the newly landed golden wire vectors, mutation score, performance,
