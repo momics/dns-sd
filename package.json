@@ -12,6 +12,7 @@
     "test:node": "npm run test:node --workspaces",
     "test:deno": "cd packages/dns-sd-shared && deno task test",
     "test:interop": "node --test \"integration/**/*.test.mjs\"",
+    "test:mutation": "stryker run",
     "fmt": "deno fmt",
     "fmt:check": "deno fmt --check",
     "lint": "deno lint",

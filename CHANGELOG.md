@@ -59,6 +59,16 @@ published yet; this section becomes the notes for the first tagged release.
   `TxtRecordsInput` (accepts `string`) vs `TxtRecords` (decoded forms only)
   asymmetry. Checked by the existing typecheck gate under both Deno
   (`deno task check`) and Node (`tsc --noEmit`) with zero runtime cost (#42).
+- **Mutation-testing ratchet (Stryker).** `npm run test:mutation` runs
+  [Stryker](https://stryker-mutator.io/) over the pure-TypeScript core
+  (`packages/dns-sd-shared/src/`, excluding the test harness) via the `command`
+  test runner against the shared cross-runtime suite. An enforced floor
+  (`thresholds.break` in `stryker.conf.json`) fails CI when the mutation score
+  regresses; the committed baseline is **65.87%** (anti-flake floor set at
+  **63%**). A
+  Node-only `Mutation` workflow (`.github/workflows/mutation.yml`) gates every
+  push/PR. Proves the tests fail when logic breaks — the highest-leverage guard
+  against coverage-gaming (`docs/testing-strategy.md`).
 - **Agent-convergence governance.** A constitution (`AGENTS.md`) plus
   `.github/copilot-instructions.md` and `docs/` (`convergence.md`,
   `api-design.md`, `testing-strategy.md`) that define an unambiguous "done", a

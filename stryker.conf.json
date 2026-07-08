@@ -1,0 +1,24 @@
+{
+  "$schema": "./node_modules/@stryker-mutator/core/schema/stryker-schema.json",
+  "_comment": "Mutation-testing ratchet for the pure-TypeScript core of @momics/dns-sd-shared (AGENTS.md §5, docs/convergence.md). The shared suite runs through a custom zero-dependency cross-runtime harness (packages/dns-sd-shared/src/testing/harness.ts) that exits non-zero on any failure, so Stryker's 'command' test runner is the pragmatic fit: it rebuilds the mutated src via tsc and runs the Node suite. Run from the repo root (not the workspace) because dependencies are hoisted to the root node_modules, which Stryker symlinks into each sandbox; running from the workspace would leave tsc unavailable in the sandbox. Measured baseline mutation score is 65.87%; thresholds.break is set to 63 (~3 pts below) as an anti-flake floor that absorbs cross-machine timeout non-determinism (a large share of killed mutants die by the 15s timeout, which is timing-sensitive on slower CI runners). 63 still catches any real regression that erodes the suite; ratchet the floor UP deliberately (re-measure, bump in the same PR) as the score improves. low/high are aspirational reporting bands only.",
+  "packageManager": "npm",
+  "testRunner": "command",
+  "commandRunner": {
+    "command": "npm run test:node --workspace @momics/dns-sd-shared"
+  },
+  "mutate": [
+    "packages/dns-sd-shared/src/**/*.ts",
+    "!packages/dns-sd-shared/src/testing/**"
+  ],
+  "reporters": ["html", "clear-text", "progress"],
+  "timeoutMS": 15000,
+  "tempDirName": ".stryker-tmp",
+  "htmlReporter": {
+    "fileName": "reports/mutation/mutation.html"
+  },
+  "thresholds": {
+    "high": 90,
+    "low": 80,
+    "break": 63
+  }
+}
