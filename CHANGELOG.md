@@ -29,6 +29,19 @@ published yet; this section becomes the notes for the first tagged release.
   micro-noise. Time-per-iteration is the tracked metric; per-op allocation
   tracking is deferred until `Deno.bench` exposes it. Re-baseline deliberately
   with `deno task perf:baseline` (#39).
+- **Golden wire vectors.** Byte-exact DNS-SD / mDNS packet fixtures
+  (`packages/dns-sd-shared/test/fixtures/golden-wire.ts`) asserted by the codec
+  (`packages/dns-sd-shared/test/golden-wire.test.ts`) so on-the-wire behaviour
+  cannot drift from the ecosystem. Includes a browse query and a full
+  announcement (PTR/TXT/SRV/A/AAAA/NSEC) **captured from real Apple Bonjour**
+  (`mDNSResponder`) traffic — with personally-identifying leaves replaced by
+  same-length placeholders so all framing, compression, TTLs and record order
+  are preserved byte-for-byte — plus a spec-derived goodbye (TTL=0, RFC 6762
+  §10.1). Every vector is decoded to a committed structure and round-tripped
+  under both Deno and Node; the spec-derived goodbye is additionally re-encoded
+  byte-for-byte, while captured vectors pin meaning rather than exact bytes.
+  Live Avahi captures are left for a human on Linux (Avahi was unavailable in
+  the capture environment) (#38).
 - **Type-level API tests.** A dependency-free `*.type-test.ts` suite
   (`packages/dns-sd-shared/test/api.type-test.ts`) that locks the *type
   behavior* of the public API — the `ServiceAnnouncement` per-variant
