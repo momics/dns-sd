@@ -16,6 +16,14 @@ published yet; this section becomes the notes for the first tagged release.
 
 ### Added
 
+- **Type-level API tests.** A dependency-free `*.type-test.ts` suite
+  (`packages/dns-sd-shared/test/api.type-test.ts`) that locks the *type
+  behavior* of the public API — the `ServiceAnnouncement` per-variant
+  refinements and `kind` narrowing, `browse()`'s `AsyncGenerator` return type,
+  the `signal`/`timeoutMs` options on `BrowseOpts`/`AdvertiseOpts`, and the
+  `TxtRecordsInput` (accepts `string`) vs `TxtRecords` (decoded forms only)
+  asymmetry. Checked by the existing typecheck gate under both Deno
+  (`deno task check`) and Node (`tsc --noEmit`) with zero runtime cost (#42).
 - **Agent-convergence governance.** A constitution (`AGENTS.md`) plus
   `.github/copilot-instructions.md` and `docs/` (`convergence.md`,
   `api-design.md`, `testing-strategy.md`) that define an unambiguous "done", a

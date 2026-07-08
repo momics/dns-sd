@@ -16,5 +16,6 @@ import "./responder.test.ts";
 import "./e2e.test.ts";
 import "./interop.test.ts";
 import "./adapter.test.ts";
+import "./api.type-test.ts";
 
 await runAll();
