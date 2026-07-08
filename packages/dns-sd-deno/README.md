@@ -15,7 +15,7 @@ lives in the shared package; this package only owns the socket.
 
 ## Install / import
 
-```ts
+```ts no-check
 // Published (placeholder — publishing is not set up in this repo yet):
 import { advertise, browse, close } from "jsr:@momics/dns-sd-deno";
 
@@ -60,6 +60,8 @@ await close();
 Pass `timeoutMs` or an `AbortSignal` to stop it:
 
 ```ts
+import { browse } from "@momics/dns-sd-deno";
+
 browse({ service: { type: "http", protocol: "tcp" }, timeoutMs: 5000 });
 ```
 

@@ -54,6 +54,9 @@ jobs:
       - name: deno doc --lint (public JSDoc completeness)
         run: deno task check:docs
 
+      - name: Executable README examples type-check against the real API
+        run: deno task check:docs-examples
+
       - name: Public API surface unchanged (frozen snapshot)
         run: deno task check:api
 

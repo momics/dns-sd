@@ -43,6 +43,14 @@ published yet; this section becomes the notes for the first tagged release.
   layout is canonical for this codec), while the captured browse query pins
   meaning rather than exact bytes. Live Avahi captures are left for a human on
   Linux (Avahi was unavailable in the capture environment) (#38).
+- **Executable-docs ratchet.** `deno task check:docs-examples`
+  (`scripts/check-docs-examples.ts`, dependency-free, Deno-native) extracts
+  every fenced ` ```ts ` / ` ```typescript ` block from the root and per-package
+  READMEs and type-checks each against the **real** public API — package
+  specifiers (`@momics/dns-sd-node`, …) are redirected to their local source
+  entrypoints, so a public API change that breaks a README example fails the
+  build. Blocks that are deliberately illustrative opt out with a `no-check`
+  fence marker. Runs in CI on push/PR (#41).
 - **Type-level API tests.** A dependency-free `*.type-test.ts` suite
   (`packages/dns-sd-shared/test/api.type-test.ts`) that locks the *type
   behavior* of the public API — the `ServiceAnnouncement` per-variant

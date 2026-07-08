@@ -45,6 +45,7 @@ deno task check                # typecheck shared (source + tests)
 deno task check:deno-runtime   # typecheck the Deno runtime package
 deno task check:tauri          # typecheck the Tauri guest-js binding
 deno task check:docs           # JSDoc completeness on every public symbol
+deno task check:docs-examples  # type-check the READMEs' TS code blocks
 deno task check:api            # public API surface unchanged (frozen snapshot)
 deno task test                 # whole TS suite under Deno
 

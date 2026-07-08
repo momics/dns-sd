@@ -19,7 +19,7 @@ It contains:
 
 ## Public API
 
-```typescript
+```typescript no-check
 /** Continuously discover service instances. */
 browse(opts: BrowseOpts): AsyncGenerator<ServiceAnnouncement, void, void>;
 
@@ -29,7 +29,7 @@ advertise(opts: AdvertiseOpts): Promise<AdvertiseHandle>;
 
 Both are obtained from a `DnsSd` created via `createDnsSd(backend)`:
 
-```typescript
+```typescript no-check
 import { createDnsSd } from "@momics/dns-sd-shared";
 
 // Runtime with raw UDP (Deno, Node):
@@ -53,7 +53,7 @@ A runtime package implements **one** of these and passes it to `createDnsSd`.
 
 ### `DatagramTransport` (Deno / Node)
 
-```typescript
+```typescript no-check
 interface DatagramTransport {
   readonly family: "IPv4" | "IPv6";
   readonly hostname: string;
@@ -70,7 +70,7 @@ The shared engine drives the full mDNS protocol over this socket.
 
 ### `DnsSdAdapter` (Tauri / native mobile)
 
-```typescript
+```typescript no-check
 interface DnsSdAdapter {
   browseStart(spec: BrowseServiceSpec, sink: ServiceSink): Promise<AdapterBrowseHandle>;
   advertiseStart(spec: AdvertiseServiceSpec): Promise<AdapterAdvertiseHandle>;
@@ -86,7 +86,7 @@ Here the OS performs mDNS; the adapter just maps OS events to
 Every runtime package should run the shared conformance suite against its own
 backend to prove identical behaviour:
 
-```typescript
+```typescript no-check
 import { conformanceCases } from "@momics/dns-sd-shared/testing";
 import { createDnsSd } from "@momics/dns-sd-shared";
 

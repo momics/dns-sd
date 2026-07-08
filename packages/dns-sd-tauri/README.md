@@ -56,7 +56,7 @@ guarantees, from each platform's `isActive` + host/port signals. Both `kind`
 
 Identical to every other `@momics/dns-sd` runtime:
 
-```typescript
+```typescript no-check
 /** Continuously discover service instances. */
 export const browse: (opts: BrowseOpts) => AsyncGenerator<ServiceAnnouncement>;
 

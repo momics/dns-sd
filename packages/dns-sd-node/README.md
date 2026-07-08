@@ -44,6 +44,8 @@ Stop a browse by `break`-ing the loop, calling the generator's `.return()`,
 passing an `AbortSignal`, or setting `timeoutMs`:
 
 ```ts
+import { browse } from "@momics/dns-sd-node";
+
 const ac = new AbortController();
 setTimeout(() => ac.abort(), 10_000);
 for await (
