@@ -93,3 +93,21 @@ jobs:
       # gated behind DNS_SD_NETWORK_TESTS and reported as skipped here.
       - name: Run the whole TS suite under Node
         run: npm run test:node
+
+  # ── Published bundle-size ratchet (Node-only) ────────────────────────────────
+  size:
+    name: Size (bundle)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm ci
+      # Builds @momics/dns-sd-shared and measures the minified + gzipped ESM of
+      # each published entrypoint (., ./wire, ./testing, ./testing/harness)
+      # against the committed limits in packages/dns-sd-shared/.size-limit.json.
+      # Fails when an entrypoint grows past its limit — the "thin, pure-TS, zero
+      # native deps" promise, machine-enforced.
+      - name: size-limit (published entrypoints)
+        run: npm run size --workspace @momics/dns-sd-shared

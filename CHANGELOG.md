@@ -36,6 +36,12 @@ published yet; this section becomes the notes for the first tagged release.
   surface against a committed golden snapshot
   (`packages/dns-sd-shared/api/dns-sd-shared.api.md`); `deno task snapshot:api`
   re-baselines it deliberately. Both run in CI.
+- **Published bundle-size ratchet.** `size-limit` measures the minified +
+  gzipped ESM of each published `@momics/dns-sd-shared` entrypoint (`.`,
+  `./wire`, `./testing`, `./testing/harness`) against committed per-entrypoint
+  limits in `packages/dns-sd-shared/.size-limit.json`; `npm run size --workspace
+  @momics/dns-sd-shared` runs it and a Node-only CI job fails when an entrypoint
+  grows past its limit — the "thin, pure-TS, zero native deps" promise, machine-enforced.
 - `MdnsBrowser` and `MdnsResponder` — documented public handle interfaces
   returned by `MdnsEngine.browse` / `MdnsEngine.advertise`, replacing the leaked
   internal classes in the engine's public signatures.

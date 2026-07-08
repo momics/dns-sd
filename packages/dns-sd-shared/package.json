@@ -38,11 +38,15 @@
     "build": "tsc --project tsconfig.json",
     "prepare": "tsc --project tsconfig.json",
     "typecheck": "tsc --noEmit --project tsconfig.json",
-    "test:node": "npm run build && node dist/test/run.js"
+    "test:node": "npm run build && node dist/test/run.js",
+    "size": "npm run build && size-limit"
   },
   "files": ["dist", "src", "README.md"],
   "dependencies": {},
   "devDependencies": {
+    "@size-limit/esbuild": "^12.1.0",
+    "@size-limit/file": "^12.1.0",
+    "size-limit": "^12.1.0",
     "typescript": "^5.7.0"
   },
   "engines": {
