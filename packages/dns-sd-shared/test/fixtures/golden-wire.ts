@@ -58,13 +58,19 @@ export interface GoldenVector {
    * Whether the test asserts that re-encoding reproduces {@link hex}
    * byte-for-byte, in addition to decoding + semantic round-trip.
    *
-   * Reserved for `spec-derived` vectors, whose bytes *are* this codec's
-   * canonical output by construction. `captured` vectors are `false`: even
-   * when our encoder happens to reproduce them exactly today (it does for the
-   * ones committed here), a future legitimate change to name-compression or
-   * record ordering could differ from a foreign stack's equally-valid layout
-   * without any real defect — so we pin their *meaning* (decode + round-trip),
-   * not their exact bytes, to avoid a brittle assertion.
+   * `true` when this codec's canonical output *is* these exact bytes — always
+   * for `spec-derived` vectors (canonical by construction), and for a
+   * `captured` vector when our encoder is verified to reproduce it exactly
+   * (the real Bonjour announcement here: 230→230 bytes identical). Pinning
+   * exact bytes there is deliberate: in this frozen-wire library it also
+   * catches encode-side compression/ordering regressions, and a *deliberate*
+   * future encoder change should trip this vector as a "wire behaviour changed
+   * — come look / re-baseline" signal, exactly like the API snapshot.
+   *
+   * `false` pins *meaning* only (decode + semantic round-trip), used where a
+   * foreign stack's equally-valid-but-different layout should not be asserted
+   * as bytes. The captured browse query is kept `false` on purpose, so both
+   * modes stay exercised and documented by example.
    */
   readonly byteStable: boolean;
   /** The exact structure {@link hex} must decode to. */
@@ -92,7 +98,8 @@ export const goldenVectors: readonly GoldenVector[] = [
     rfc: "RFC 6763 §4.1 (browse) / RFC 1035 §4.1.2 (question)",
     hex:
       "0000000000010000000000000b5f676f6c64656e74657374045f746370056c6f63616c00000c0001",
-    // captured: pin meaning, not exact bytes (see `byteStable` docs).
+    // captured: kept semantic-only on purpose (byteStable=false) so both
+    // assertion modes stay exercised and documented (see `byteStable` docs).
     byteStable: false,
     expect: {
       header: {
@@ -134,9 +141,11 @@ export const goldenVectors: readonly GoldenVector[] = [
     rfc: "RFC 6763 §4.1/§6, RFC 6762 §6.1 (NSEC)/§10.2 (cache-flush)",
     hex:
       "000084000000000100000006055f68747470045f746370056c6f63616c00000c0001000011940023204578616d706c65205765622044657669636520436f6e66696775726174696f6ec00cc0280010800100001194001d06706174683d2f154d41433d30303a30303a35453a30303a35333a3031c02800218001000000780011000000000dfe087765626465763031c017c08600018001000000780004c0000281c086001c8001000000780010fe800000000000000000000000000001c028002f8001000011940009c02800050000800040c086002f8001000000780008c086000440000008",
-    // captured: our encoder happens to reproduce these exact bytes today, but we
-    // deliberately assert only decode + semantic round-trip (see `byteStable`).
-    byteStable: false,
+    // captured: our encoder is canonical for THIS packet (230→230 bytes
+    // identical), so we pin exact bytes — this also guards encode-side
+    // compression/ordering, and a deliberate future encoder change should
+    // re-baseline this vector on purpose ("wire behaviour changed — come look").
+    byteStable: true,
     expect: {
       header: {
         id: 0,
