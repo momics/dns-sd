@@ -83,9 +83,15 @@ direction, enforced in CI. Never lower a ratchet to make a build pass.
 | --- | --- | --- |
 | Public API surface | `deno task check:api` | No change without a re-baseline + changelog |
 | JSDoc completeness | `deno task check:docs` (`deno doc --lint`) | Every public symbol documented; zero lint errors |
+| Type-level API shape | `deno task check` / `npm run typecheck` | Public API type-shape assertions hold (`test/api.type-test.ts`) |
 | Types | `tsc --noEmit` (both `strict`) | Zero errors; no new `any` / `@ts-ignore`/`@ts-expect-error` in `src/` |
 | Format & lint | `deno fmt --check`, `deno lint` | Zero diffs, zero warnings |
 | Cross-runtime tests | `deno task test`, `npm run test:node` | The same suite passes under Deno *and* Node |
+| Golden wire vectors | `deno task test` / `npm run test:node` | Real-captured + spec-derived DNS-SD packets decode to the pinned structure (byte-exact for canonical vectors) |
+| Mutation score | `npm run test:mutation` (Stryker, nightly + on `main`) | Score stays ≥ the committed floor (`thresholds.break`); ratchet the floor **up** as it improves, never down |
+| Performance | `deno task perf:gate` | Hot-path timings stay within budget of `bench/perf-baseline.json`; re-baseline deliberately (`deno task perf:baseline`) |
+| Bundle size | `npm run size` (`size-limit`) | Published entrypoints stay under the committed byte limits |
+| Executable docs | `deno task check:docs-examples` | Every non-`no-check` README example type-checks against the real public API |
 
 New ratchets are added the way `docs/convergence.md` describes — a metric, a
 committed baseline, and a CI gate — never as informal review preference.

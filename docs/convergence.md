@@ -73,30 +73,20 @@ A ratchet is not a review opinion; it is a mechanism. To add one:
 
 Never enforce a new expectation informally in review — encode it or drop it.
 
-## Candidate ratchets not yet installed (the roadmap to the fixed point)
+## Candidate ratchets — the initial roadmap is fully installed
 
-These are the known gaps between "good" and "the attractor". Closing them is the
-legitimate work that moves a metric (§1 of `AGENTS.md`). Each is tracked as an
-issue:
+The original gap between "good" and "the attractor" was tracked as six issues —
+mutation testing (#37), golden wire vectors (#38), performance baselines (#39),
+bundle-size (#40), executable README examples (#41), and type-level tests (#42).
+**All six are now installed and enforced in CI**; they live in `AGENTS.md` §5's
+ratchet table alongside the original gates. Closing them was the legitimate work
+that moved a metric (§1 of `AGENTS.md`); with them landed, the steady state is
+now the expectation, not the goal.
 
-- **Mutation testing** (e.g. Stryker on `dns-sd-shared`) — the highest-leverage
-  addition: proves the tests fail when logic breaks, which is what actually
-  stops coverage-gaming. ([#37](https://github.com/momics/dns-sd/issues/37))
-- **Golden wire vectors** captured from real Bonjour (`mDNSResponder`) and Avahi
-  traffic, asserted by the codec so behavior can't drift from the ecosystem.
-  ([#38](https://github.com/momics/dns-sd/issues/38))
-- **Performance baselines** on the hot paths (encode/decode, cache) with a
-  regression gate — track allocations, not just wall-clock.
-  ([#39](https://github.com/momics/dns-sd/issues/39))
-- **Bundle-size ratchet** (e.g. `size-limit`) on the published entrypoints.
-  ([#40](https://github.com/momics/dns-sd/issues/40))
-- **Executable README examples** — extract and typecheck/run every code block so
-  docs can't rot. ([#41](https://github.com/momics/dns-sd/issues/41))
-- **Type-level tests** (`tsd`/`expect-type`) so the *shape* of the API is under
-  test, not just its runtime behavior.
-  ([#42](https://github.com/momics/dns-sd/issues/42))
-
-When one is installed, move it up into `AGENTS.md` §5 and delete it here.
+Future candidate ratchets are added the same way (the recipe above): a metric, a
+committed baseline, a CI gate, and a row in `AGENTS.md` §5 — never an informal
+review preference. If no such metric is outstanding, there is nothing to add:
+a green build with no ratchet improvable is *done*.
 
 ## Why this makes the package "barely need touching"
 

@@ -116,6 +116,12 @@ published yet; this section becomes the notes for the first tagged release.
 
 ### Changed
 
+- The `AGENTS.md` §5 ratchet table now lists every installed anti-drift gate —
+  the original six (API surface, JSDoc, types, fmt/lint, cross-runtime tests)
+  plus the newly landed golden wire vectors, mutation score, performance,
+  bundle-size, executable-docs, and type-level API-shape ratchets. The
+  `docs/convergence.md` roadmap is correspondingly marked fully installed
+  (#37–#42).
 - Unified self-echo suppression into a single shared, pure `EchoSuppressor`
   used by every UDP transport (#30).
 - `publish.yml` now also checks `packages/dns-sd-tauri/Cargo.toml` against the
