@@ -11,10 +11,32 @@ import { decodeMessage } from "../wire/decode.ts";
 import { encodeMessage } from "../wire/encode.ts";
 import type { DnsMessage } from "../wire/types.ts";
 import type { DatagramTransport } from "../seams/transport.ts";
-import type { AdvertiseServiceSpec, BrowseServiceSpec } from "../types.ts";
+import type {
+  AdvertiseServiceSpec,
+  BrowseServiceSpec,
+  ServiceAnnouncement,
+} from "../types.ts";
 import { DEFAULT_TIMING, type EngineTiming } from "./constants.ts";
 import { Browser } from "./query.ts";
 import { Responder } from "./responder.ts";
+
+/** A live browse subscription returned by {@link MdnsEngine.browse}. */
+export interface MdnsBrowser {
+  /** Async stream of service lifecycle events. */
+  events(): AsyncIterable<ServiceAnnouncement>;
+  /** Stop browsing and release resources. */
+  close(): void;
+}
+
+/** A live advertisement returned by {@link MdnsEngine.advertise}. */
+export interface MdnsResponder {
+  /** The final, possibly conflict-renamed instance name. */
+  readonly name: string;
+  /** The final fully-qualified instance name. */
+  readonly fullName: string;
+  /** Withdraw the advertisement (sending goodbye) and release resources. */
+  stop(): Promise<void>;
+}
 
 /** Options for constructing an {@link MdnsEngine}. */
 export interface EngineOptions {
@@ -22,6 +44,7 @@ export interface EngineOptions {
   timing?: EngineTiming;
 }
 
+/** Runtime-agnostic mDNS engine over a {@link DatagramTransport}. */
 export class MdnsEngine {
   private readonly transport: DatagramTransport;
   private readonly timing: EngineTiming;
@@ -31,6 +54,7 @@ export class MdnsEngine {
   private closed = false;
   private readonly loop: Promise<void>;
 
+  /** Create an engine bound to a multicast datagram transport. */
   constructor(transport: DatagramTransport, options: EngineOptions = {}) {
     this.transport = transport;
     this.timing = options.timing ?? DEFAULT_TIMING;
@@ -38,6 +62,7 @@ export class MdnsEngine {
     this.loop = this.runReceiveLoop();
   }
 
+  /** Receive and dispatch decoded DNS messages until the transport closes. */
   private async runReceiveLoop(): Promise<void> {
     for (;;) {
       let datagram;
@@ -75,7 +100,7 @@ export class MdnsEngine {
   };
 
   /** Start browsing for a service type. */
-  browse(spec: BrowseServiceSpec): Browser {
+  browse(spec: BrowseServiceSpec): MdnsBrowser {
     const browser = new Browser(
       {
         timing: this.timing,
@@ -94,7 +119,7 @@ export class MdnsEngine {
   }
 
   /** Advertise a service; resolves once the name is claimed and announced. */
-  async advertise(spec: AdvertiseServiceSpec): Promise<Responder> {
+  async advertise(spec: AdvertiseServiceSpec): Promise<MdnsResponder> {
     const responder = new Responder(
       {
         timing: this.timing,

@@ -25,6 +25,7 @@ import {
 } from "../naming.ts";
 import { encodeTxtInput } from "../txt.ts";
 import type { EngineTiming } from "./constants.ts";
+import type { MdnsResponder } from "./engine.ts";
 import { TTL_HOST, TTL_SHARED } from "./constants.ts";
 import { compareRdata, recordSort } from "./records.ts";
 
@@ -41,7 +42,8 @@ export interface ResponderContext {
 
 const MAX_RENAME_ATTEMPTS = 20;
 
-export class Responder {
+/** Active responder state machine for one advertised service instance. */
+export class Responder implements MdnsResponder {
   private readonly ctx: ResponderContext;
   private readonly spec: AdvertiseServiceSpec;
   private readonly domain: string;

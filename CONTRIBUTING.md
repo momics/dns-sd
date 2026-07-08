@@ -44,6 +44,8 @@ deno lint
 deno task check                # typecheck shared (source + tests)
 deno task check:deno-runtime   # typecheck the Deno runtime package
 deno task check:tauri          # typecheck the Tauri guest-js binding
+deno task check:docs           # JSDoc completeness on every public symbol
+deno task check:api            # public API surface unchanged (frozen snapshot)
 deno task test                 # whole TS suite under Deno
 
 # Node.js
@@ -57,6 +59,28 @@ cd packages/dns-sd-tauri && cargo clippy --all-targets && cargo test
 
 All of the above must be green. Real-network and cross-runtime interop tests
 are gated behind `DNS_SD_NETWORK_TESTS=1` and are run locally, not in CI.
+
+> **New here?** Read [`AGENTS.md`](./AGENTS.md) first — it is the constitution
+> this repo is governed by (the definition of "done", the frozen public API, the
+> non-goals, and the ratchets). [`docs/convergence.md`](./docs/convergence.md)
+> explains the reasoning behind it.
+
+### The public API is frozen
+
+`deno task check:api` compares the public surface against the golden snapshot in
+[`packages/dns-sd-shared/api/`](./packages/dns-sd-shared/api/). A failure means
+you changed the public API. If that was **not** intended, revert it. If it was
+deliberate, re-baseline and record it in the changelog:
+
+```bash
+deno task snapshot:api   # regenerate the snapshot
+# then add a CHANGELOG.md entry describing the surface change
+```
+
+`deno task check:docs` runs `deno doc --lint`: every exported symbol must carry
+JSDoc. See [`docs/api-design.md`](./docs/api-design.md) for the API bar and
+[`docs/testing-strategy.md`](./docs/testing-strategy.md) for how we test.
+
 
 ## Test-driven workflow (add a failing harness test, then fix)
 

@@ -31,7 +31,9 @@ export interface ParsedServiceName {
   instance: string | null;
   /** The service type without the leading underscore, e.g. `"http"`. */
   serviceType: string;
+  /** The transport protocol from the `_tcp` / `_udp` label. */
   protocol: TransportProtocol;
+  /** The trailing DNS-SD domain, e.g. `"local"`. */
   domain: string;
   /** Subtypes (without leading underscores), if the name was subtype-scoped. */
   subtypes: string[];

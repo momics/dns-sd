@@ -67,7 +67,12 @@ export {
   TTL_HOST,
   TTL_SHARED,
 } from "./engine/constants.ts";
-export { type EngineOptions, MdnsEngine } from "./engine/engine.ts";
+export {
+  type EngineOptions,
+  type MdnsBrowser,
+  MdnsEngine,
+  type MdnsResponder,
+} from "./engine/engine.ts";
 
 // ── Naming + TXT helpers ────────────────────────────────────────────────────
 export {
@@ -82,6 +87,7 @@ export {
   subtypeServiceLabels,
 } from "./naming.ts";
 export { encodeTxtInput, txtFromAttributes, txtValueToString } from "./txt.ts";
+export type { TxtAttributes } from "./wire/types.ts";
 
 // ── Self-echo suppression (shared by the UDP transports) ────────────────────
 export {

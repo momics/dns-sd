@@ -16,7 +16,10 @@
   },
   "tasks": {
     "test": "deno run test/run.ts",
-    "check": "deno check src/index.ts src/wire/index.ts src/testing/index.ts src/testing/harness.ts test/run.ts"
+    "check": "deno check src/index.ts src/wire/index.ts src/testing/index.ts src/testing/harness.ts test/run.ts",
+    "check:docs": "deno doc --lint src/index.ts src/wire/index.ts src/testing/index.ts src/testing/harness.ts",
+    "check:api": "deno run -A scripts/api-snapshot.ts --check",
+    "snapshot:api": "deno run -A scripts/api-snapshot.ts --write"
   },
   "publish": {
     "include": ["src/", "README.md", "deno.json"]

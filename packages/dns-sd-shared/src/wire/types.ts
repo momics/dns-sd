@@ -21,18 +21,27 @@ export enum DnsClass {
 
 /** DNS OPCODE values (RFC 1035 §4.1.1). */
 export enum Opcode {
+  /** Standard query. */
   Query = 0,
+  /** Inverse query (obsolete). */
   IQuery = 1,
+  /** Server status request. */
   Status = 2,
 }
 
 /** DNS RCODE values (RFC 1035 §4.1.1). */
 export enum Rcode {
+  /** No error condition. */
   NoError = 0,
+  /** The name server was unable to interpret the query. */
   FormatError = 1,
+  /** The name server failed to process the query. */
   ServerFailure = 2,
+  /** The domain name referenced in the query does not exist. */
   NameError = 3,
+  /** The name server does not support the requested query kind. */
   NotImplemented = 4,
+  /** The name server refused to perform the operation. */
   Refused = 5,
 }
 
@@ -68,6 +77,7 @@ export interface DnsHeader {
   id: number;
   /** `false` = query, `true` = response. */
   isResponse: boolean;
+  /** DNS operation code. */
   opcode: Opcode;
   /** Authoritative Answer. */
   authoritative: boolean;
@@ -77,6 +87,7 @@ export interface DnsHeader {
   recursionDesired: boolean;
   /** Recursion Available. */
   recursionAvailable: boolean;
+  /** DNS response code. */
   rcode: Rcode;
 }
 
@@ -84,7 +95,9 @@ export interface DnsHeader {
 export interface DnsQuestion {
   /** The queried name, as a sequence of labels (without a trailing empty root). */
   name: string[];
+  /** The requested record TYPE. */
   type: ResourceType;
+  /** The requested DNS CLASS. */
   class: DnsClass;
   /**
    * mDNS "unicast response" bit (RFC 6762 §5.4). When `true` the querier
@@ -97,7 +110,9 @@ export interface DnsQuestion {
 export interface ResourceRecordBase {
   /** The record's owner name, as a sequence of labels. */
   name: string[];
+  /** The record TYPE. */
   type: ResourceType;
+  /** The record CLASS. */
   class: DnsClass;
   /** Time-to-live, in seconds. A TTL of 0 signals a "goodbye" (RFC 6762 §10.1). */
   ttl: number;
@@ -110,19 +125,25 @@ export interface ResourceRecordBase {
 
 /** An `A` record: a 4-byte IPv4 address, as an array of octets. */
 export interface ResourceRecordA extends ResourceRecordBase {
+  /** Discriminates an IPv4 address record. */
   type: ResourceType.A;
+  /** IPv4 address RDATA. */
   data: { kind: "A"; address: number[] };
 }
 
 /** An `AAAA` record: an IPv6 address, in canonical string form. */
 export interface ResourceRecordAAAA extends ResourceRecordBase {
+  /** Discriminates an IPv6 address record. */
   type: ResourceType.AAAA;
+  /** IPv6 address RDATA. */
   data: { kind: "AAAA"; address: string };
 }
 
 /** A `PTR` record: points at another name (a service instance for DNS-SD). */
 export interface ResourceRecordPTR extends ResourceRecordBase {
+  /** Discriminates a pointer record. */
   type: ResourceType.PTR;
+  /** Target name RDATA. */
   data: { kind: "PTR"; name: string[] };
 }
 
@@ -134,7 +155,9 @@ export interface ResourceRecordPTR extends ResourceRecordBase {
  * - bytes   — attribute present with a binary value (`key=<bytes>`).
  */
 export interface ResourceRecordTXT extends ResourceRecordBase {
+  /** Discriminates a TXT attribute record. */
   type: ResourceType.TXT;
+  /** TXT attribute RDATA. */
   data: { kind: "TXT"; attributes: TxtAttributes };
 }
 
@@ -143,7 +166,9 @@ export type TxtAttributes = Record<string, Uint8Array | true | null>;
 
 /** An `SRV` record: locates the host and port for a service instance. */
 export interface ResourceRecordSRV extends ResourceRecordBase {
+  /** Discriminates a service location record. */
   type: ResourceType.SRV;
+  /** SRV priority, weight, port and target RDATA. */
   data: {
     kind: "SRV";
     priority: number;
@@ -155,7 +180,9 @@ export interface ResourceRecordSRV extends ResourceRecordBase {
 
 /** An `NSEC` record: proves which record types exist for a name (RFC 6762 §6.1). */
 export interface ResourceRecordNSEC extends ResourceRecordBase {
+  /** Discriminates an NSEC record. */
   type: ResourceType.NSEC;
+  /** NSEC next-domain and type bitmap RDATA. */
   data: {
     kind: "NSEC";
     nextDomainName: string[];
@@ -166,6 +193,7 @@ export interface ResourceRecordNSEC extends ResourceRecordBase {
 
 /** Any resource record whose RDATA we don't decode; RDATA is kept raw. */
 export interface ResourceRecordRaw extends ResourceRecordBase {
+  /** Undecoded RDATA bytes. */
   data: { kind: "RAW"; bytes: Uint8Array };
 }
 
@@ -181,30 +209,41 @@ export type ResourceRecord =
 
 /** A fully decoded DNS message. */
 export interface DnsMessage {
+  /** DNS message header. */
   header: DnsHeader;
+  /** Question section entries. */
   questions: DnsQuestion[];
+  /** Answer section records. */
   answers: ResourceRecord[];
+  /** Authority section records. */
   authorities: ResourceRecord[];
+  /** Additional section records. */
   additionals: ResourceRecord[];
 }
 
 // ── Type guards ──────────────────────────────────────────────────────────────
 
+/** Whether a record is an `A` record. */
 export function isA(rr: ResourceRecord): rr is ResourceRecordA {
   return rr.type === ResourceType.A;
 }
+/** Whether a record is an `AAAA` record. */
 export function isAAAA(rr: ResourceRecord): rr is ResourceRecordAAAA {
   return rr.type === ResourceType.AAAA;
 }
+/** Whether a record is a `PTR` record. */
 export function isPTR(rr: ResourceRecord): rr is ResourceRecordPTR {
   return rr.type === ResourceType.PTR;
 }
+/** Whether a record is a `TXT` record. */
 export function isTXT(rr: ResourceRecord): rr is ResourceRecordTXT {
   return rr.type === ResourceType.TXT;
 }
+/** Whether a record is an `SRV` record. */
 export function isSRV(rr: ResourceRecord): rr is ResourceRecordSRV {
   return rr.type === ResourceType.SRV;
 }
+/** Whether a record is an `NSEC` record. */
 export function isNSEC(rr: ResourceRecord): rr is ResourceRecordNSEC {
   return rr.type === ResourceType.NSEC;
 }

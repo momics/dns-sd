@@ -21,11 +21,13 @@ import { FastFIFO } from "./fast_fifo.ts";
 
 /** Backend that drives mDNS over a raw UDP multicast transport (Deno/Node). */
 export interface TransportBackend extends EngineOptions {
+  /** Transport the shared engine uses for mDNS datagrams. */
   transport: DatagramTransport;
 }
 
 /** Backend that delegates to an OS resolver via an adapter (Tauri/native). */
 export interface AdapterBackend {
+  /** Adapter that implements browse/advertise outside the shared engine. */
   adapter: DnsSdAdapter;
 }
 

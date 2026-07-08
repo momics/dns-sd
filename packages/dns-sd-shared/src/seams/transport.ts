@@ -23,12 +23,15 @@ export interface DatagramSource {
   address: string;
   /** The sender's UDP port. */
   port: number;
+  /** The sender's IP family. */
   family: IpFamily;
 }
 
 /** A received datagram together with where it came from. */
 export interface ReceivedDatagram {
+  /** Datagram payload bytes. */
   data: Uint8Array;
+  /** Address metadata for the sender. */
   source: DatagramSource;
 }
 

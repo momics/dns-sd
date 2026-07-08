@@ -114,6 +114,14 @@ and [Tauri architecture](./packages/dns-sd-tauri/README.md#architecture).
 
 Build, test and release instructions live in [CONTRIBUTING.md](./CONTRIBUTING.md).
 
+This repository is governed by a constitution — [AGENTS.md](./AGENTS.md) — that
+defines what "done" means, freezes the public API, and lists the ratchets that
+keep the package converging to a small, battle-tested fixed point.
+[docs/convergence.md](./docs/convergence.md) explains the philosophy;
+[docs/api-design.md](./docs/api-design.md) and
+[docs/testing-strategy.md](./docs/testing-strategy.md) cover the API bar and the
+testing approach.
+
 ## License
 
 Dual-licensed under [Apache-2.0](./LICENSE-APACHE) or [MIT](./LICENSE-MIT), at

@@ -71,6 +71,7 @@ export class EchoSuppressor {
   private readonly now: () => number;
   private readonly sends = new Map<string, RememberedSend>();
 
+  /** Create a bounded suppressor for recently sent datagrams. */
   constructor(options: EchoSuppressorOptions = {}) {
     this.ttlMs = options.ttlMs ?? DEFAULT_ECHO_TTL_MS;
     this.maxEntries = options.maxEntries ?? DEFAULT_ECHO_MAX_ENTRIES;
@@ -121,6 +122,7 @@ export class EchoSuppressor {
     this.sends.clear();
   }
 
+  /** Drop remembered sends whose suppression window has expired. */
   private prune(now: number): void {
     for (const [key, entry] of this.sends) {
       if (entry.expiresAt < now) this.sends.delete(key);
