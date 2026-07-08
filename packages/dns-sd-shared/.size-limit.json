@@ -1,0 +1,30 @@
+[
+  {
+    "name": ". (index)",
+    "path": "dist/src/index.js",
+    "import": "*",
+    "gzip": true,
+    "limit": "10.6 kB"
+  },
+  {
+    "name": "./wire",
+    "path": "dist/src/wire/index.js",
+    "import": "*",
+    "gzip": true,
+    "limit": "3.8 kB"
+  },
+  {
+    "name": "./testing",
+    "path": "dist/src/testing/index.js",
+    "import": "*",
+    "gzip": true,
+    "limit": "2.27 kB"
+  },
+  {
+    "name": "./testing/harness",
+    "path": "dist/src/testing/harness.js",
+    "import": "*",
+    "gzip": true,
+    "limit": "950 B"
+  }
+]
