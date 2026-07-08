@@ -171,7 +171,30 @@ async function checkSnippet(
   return { ok: success, output };
 }
 
+/**
+ * The checker needs Deno >= 2.9: it runs each snippet against a throwaway
+ * config placed *under the repo root but outside the workspace*, and only Deno
+ * 2.9+ ignores such a non-member config. Older Deno instead rejects it ("Config
+ * file must be a member of the workspace"), so every block would fail with a
+ * spurious config error rather than a real type check. Fail fast with an
+ * actionable message instead.
+ */
+function assertDenoVersion(): void {
+  const parts = Deno.version.deno.split(".");
+  const major = Number(parts[0]);
+  const minor = Number(parts[1]);
+  if (major < 2 || (major === 2 && minor < 9)) {
+    console.error(
+      `check:docs-examples requires Deno >= 2.9 due to workspace ` +
+        `config-discovery behavior (running ${Deno.version.deno}).\n` +
+        `Upgrade with \`deno upgrade\`; CI pins deno-version: v2.9.`,
+    );
+    Deno.exit(1);
+  }
+}
+
 async function main() {
+  assertDenoVersion();
   const listOnly = Deno.args.includes("--list");
 
   const allBlocks: Block[] = [];
