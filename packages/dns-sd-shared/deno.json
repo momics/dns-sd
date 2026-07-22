@@ -11,11 +11,18 @@
   "exports": {
     ".": "./src/index.ts",
     "./wire": "./src/wire/index.ts",
-    "./testing": "./src/testing/index.ts"
+    "./testing": "./src/testing/index.ts",
+    "./testing/harness": "./src/testing/harness.ts"
   },
   "tasks": {
     "test": "deno run test/run.ts",
-    "check": "deno check src/index.ts src/wire/index.ts src/testing/index.ts test/run.ts"
+    "check": "deno check src/index.ts src/wire/index.ts src/testing/index.ts src/testing/harness.ts test/run.ts bench/fixtures.ts bench/_calibrate.bench.ts bench/wire.bench.ts bench/txt.bench.ts bench/cache.bench.ts scripts/perf-gate.ts",
+    "bench": "deno bench --allow-read bench/",
+    "perf:gate": "deno run -A scripts/perf-gate.ts --check",
+    "perf:baseline": "deno run -A scripts/perf-gate.ts --write",
+    "check:docs": "deno doc --lint src/index.ts src/wire/index.ts src/testing/index.ts src/testing/harness.ts",
+    "check:api": "deno run -A scripts/api-snapshot.ts --check",
+    "snapshot:api": "deno run -A scripts/api-snapshot.ts --write"
   },
   "publish": {
     "include": ["src/", "README.md", "deno.json"]

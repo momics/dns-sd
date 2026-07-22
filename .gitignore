@@ -3,7 +3,18 @@ node_modules/
 
 # TypeScript build output
 dist/
+dist-js/
+dist-test/
 *.tsbuildinfo
+
+# Coverage output
+coverage/
+coverage-raw/
+lcov.info
+
+# Mutation testing (Stryker)
+.stryker-tmp/
+reports/mutation/
 
 # macOS
 .DS_Store

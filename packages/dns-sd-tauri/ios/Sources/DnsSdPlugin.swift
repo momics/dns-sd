@@ -262,6 +262,29 @@ class DnsSdPlugin: Plugin {
         return result
     }
 
+    /**
+     * Pre-iOS-16 fallback for reading a `NWTXTRecord` without its `data`
+     * property. Iterating the record yields the same key/value semantics the
+     * raw-data parser produces, matching the desktop/Android TXT contract:
+     * a byte value → `[UInt8]`, an empty value → `null`, a bare key → `true`.
+     */
+    private func parseTxtRecord(_ record: NWTXTRecord) -> JSObject {
+        var result = JSObject()
+        for (key, entry) in record {
+            switch entry {
+            case .empty:
+                result[key] = NSNull()
+            case let .data(value):
+                result[key] = value.isEmpty ? NSNull() : Array(value)
+            case .none:
+                result[key] = true
+            @unknown default:
+                break
+            }
+        }
+        return result
+    }
+
     private func encodeTxtData(_ txt: [String: TxtValue]?) -> Data? {
         guard let txt else { return nil }
         var result = Data()
@@ -325,7 +348,14 @@ class DnsSdPlugin: Plugin {
 
         var txt = JSObject()
         if case let .bonjour(txtRecord) = result.metadata {
-            txt = parseTxtRecordData(txtRecord.data)
+            // `NWTXTRecord.data` is iOS 16+. On older systems iterate the
+            // record's entries directly, which yields the same shared contract
+            // (bytes / empty→null / bare-key→true) as the raw-data parser.
+            if #available(iOS 16.0, *) {
+                txt = parseTxtRecordData(txtRecord.data)
+            } else {
+                txt = parseTxtRecord(txtRecord)
+            }
         }
 
         let txtState = txt.keys.sorted().map { key in
@@ -349,7 +379,7 @@ class DnsSdPlugin: Plugin {
         payload["addresses"] = []
         payload["txt"] = txt
         payload["isActive"] = true
-        payload["lastSeenMs"] = Int64(nowMs())
+        payload["lastSeenMs"] = Int(nowMs())
 
         return ServiceSnapshot(key: fullName, signature: signature, payload: payload)
     }
@@ -391,7 +421,7 @@ class DnsSdPlugin: Plugin {
         for (key, previous) in session.services where nextServices[key] == nil {
             var removedPayload = previous.payload
             removedPayload["isActive"] = false
-            removedPayload["lastSeenMs"] = Int64(nowMs())
+            removedPayload["lastSeenMs"] = Int(nowMs())
             emitBrowseService(session: session, payload: removedPayload)
             // Drop resolution state for departed instances.
             session.resolved.removeValue(forKey: key)
@@ -407,8 +437,8 @@ class DnsSdPlugin: Plugin {
         _ info: BrowseSession.ResolvedInfo
     ) -> ServiceSnapshot {
         var payload = snapshot.payload
-        payload["host"] = info.host.map { $0 as Any } ?? NSNull()
-        payload["port"] = info.port.map { $0 as Any } ?? NSNull()
+        payload["host"] = info.host.map { $0 as (any JSValue) } ?? NSNull()
+        payload["port"] = info.port.map { $0 as (any JSValue) } ?? NSNull()
         payload["addresses"] = info.addresses
         let addrState = info.addresses.joined(separator: ",")
         let signature = "\(snapshot.signature)|\(info.host ?? "")|\(info.port ?? -1)|\(addrState)"
@@ -613,7 +643,13 @@ class DnsSdPlugin: Plugin {
             listener.start(queue: self.sessionQueue)
         }
 
-        invoke.resolve(["advertiseId": advertiseId, "name": name])
+        // A transport-path-matching FQN (`Instance._type._proto.domain`, no
+        // trailing dot) so `advertise().fullName` is consistent across runtimes.
+        // Use `normalizeDomain` (retains `local`), not `listenerDomain` whose
+        // nil-means-local convention is only for NWListener.Service.
+        let domainLabel = normalizeDomain(args.service.domain ?? "local")
+        let fullName = "\(name).\(serviceType).\(domainLabel)"
+        invoke.resolve(["advertiseId": advertiseId, "name": name, "fullName": fullName])
     }
 
     @objc public func advertise_stop(_ invoke: Invoke) throws {

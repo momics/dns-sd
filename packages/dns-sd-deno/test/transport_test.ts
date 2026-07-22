@@ -5,12 +5,17 @@
  * networks that block multicast routing. Multicast group discovery itself is
  * covered by the (gated) conformance suite in `conformance_test.ts`.
  *
- * Run with: deno test --unstable-net --allow-net --allow-sys
+ * Run with: deno task test  (from packages/dns-sd-deno)
  *
  * @module
  */
 
-import { assert, assertEquals } from "@std/assert";
+import {
+  assert,
+  assertDeepEquals,
+  assertEquals,
+  test,
+} from "@momics/dns-sd-shared/testing/harness";
 import { decodeMessage, encodeMessage } from "@momics/dns-sd-shared/wire";
 import { DenoTransport } from "../src/transport.ts";
 
@@ -44,7 +49,7 @@ async function sendUnicast(port: number, data: Uint8Array): Promise<void> {
   }
 }
 
-Deno.test("exposes family, group, port and hostname", () => {
+test("exposes family, group, port and hostname", () => {
   const t = new DenoTransport({
     port: freeUdpPort(),
     hostname: "test-host.local",
@@ -60,7 +65,7 @@ Deno.test("exposes family, group, port and hostname", () => {
   }
 });
 
-Deno.test("IPv6 transport defaults to the IPv6 group", () => {
+test("IPv6 transport defaults to the IPv6 group", () => {
   const t = new DenoTransport({
     family: "IPv6",
     port: freeUdpPort(),
@@ -74,25 +79,25 @@ Deno.test("IPv6 transport defaults to the IPv6 group", () => {
   }
 });
 
-Deno.test("localAddresses returns the supplied override", () => {
+test("localAddresses returns the supplied override", () => {
   const t = new DenoTransport({
     port: freeUdpPort(),
     localAddresses: ["192.0.2.10", "192.0.2.11"],
   });
   try {
-    assertEquals(t.localAddresses(), ["192.0.2.10", "192.0.2.11"]);
+    assertDeepEquals(t.localAddresses(), ["192.0.2.10", "192.0.2.11"]);
     // Must hand back a copy, not the internal array.
     t.localAddresses().push("mutated");
-    assertEquals(t.localAddresses(), ["192.0.2.10", "192.0.2.11"]);
+    assertDeepEquals(t.localAddresses(), ["192.0.2.10", "192.0.2.11"]);
   } finally {
     t.close();
   }
 });
 
-Deno.test("localAddresses falls back to loopback when empty", () => {
+test("localAddresses falls back to loopback when empty", () => {
   const v4 = new DenoTransport({ port: freeUdpPort(), localAddresses: [] });
   try {
-    assertEquals(v4.localAddresses(), ["127.0.0.1"]);
+    assertDeepEquals(v4.localAddresses(), ["127.0.0.1"]);
   } finally {
     v4.close();
   }
@@ -102,13 +107,13 @@ Deno.test("localAddresses falls back to loopback when empty", () => {
     localAddresses: [],
   });
   try {
-    assertEquals(v6.localAddresses(), ["::1"]);
+    assertDeepEquals(v6.localAddresses(), ["::1"]);
   } finally {
     v6.close();
   }
 });
 
-Deno.test("localAddresses discovery returns an array of strings", () => {
+test("localAddresses discovery returns an array of strings", () => {
   const t = new DenoTransport({ port: freeUdpPort() });
   try {
     const addrs = t.localAddresses();
@@ -119,7 +124,7 @@ Deno.test("localAddresses discovery returns an array of strings", () => {
   }
 });
 
-Deno.test("receive resolves null after close", async () => {
+test("receive resolves null after close", async () => {
   const t = new DenoTransport({ port: freeUdpPort(), localAddresses: [] });
   t.close();
   assertEquals(await t.receive(), null);
@@ -128,7 +133,7 @@ Deno.test("receive resolves null after close", async () => {
   assertEquals(await t.receive(), null);
 });
 
-Deno.test("receive resolves null when closed while waiting", async () => {
+test("receive resolves null when closed while waiting", async () => {
   const t = new DenoTransport({ port: freeUdpPort(), localAddresses: [] });
   const pending = t.receive();
   // Close while the receive is suspended awaiting a datagram.
@@ -136,7 +141,7 @@ Deno.test("receive resolves null when closed while waiting", async () => {
   assertEquals(await pending, null);
 });
 
-Deno.test("send is best-effort and never rejects", async () => {
+test("send is best-effort and never rejects", async () => {
   const t = new DenoTransport({ port: freeUdpPort(), localAddresses: [] });
   try {
     // Even where multicast routing is unavailable, send must resolve, not throw.
@@ -149,7 +154,7 @@ Deno.test("send is best-effort and never rejects", async () => {
   }
 });
 
-Deno.test("setMulticastLoopback and setMulticastTtl resolve", async () => {
+test("setMulticastLoopback and setMulticastTtl resolve", async () => {
   const t = new DenoTransport({ port: freeUdpPort(), localAddresses: [] });
   try {
     await t.setMulticastLoopback(true);
@@ -160,7 +165,7 @@ Deno.test("setMulticastLoopback and setMulticastTtl resolve", async () => {
   }
 });
 
-Deno.test("close immediately after construction with tuning options does not crash", async () => {
+test("close immediately after construction with tuning options does not crash", async () => {
   // The constructor fires setMulticastLoopback/Ttl without awaiting; closing
   // before the membership resolves must not surface an unhandled rejection.
   for (let i = 0; i < 5; i++) {
@@ -176,7 +181,7 @@ Deno.test("close immediately after construction with tuning options does not cra
   await new Promise((r) => setTimeout(r, 50));
 });
 
-Deno.test("suppresses our own looped-back datagrams", async () => {
+test("suppresses our own looped-back datagrams", async () => {
   const port = freeUdpPort();
   // Disable multicast loopback so the `send(own)` below cannot also deliver its
   // own multicast copy back to us: on hosts where loopback routing is active
@@ -202,13 +207,44 @@ Deno.test("suppresses our own looped-back datagrams", async () => {
     await sendUnicast(port, peer);
     const datagram = await received;
     assert(datagram !== null, "expected the peer datagram");
-    assertEquals(Array.from(datagram.data), Array.from(peer));
+    assertDeepEquals(Array.from(datagram.data), Array.from(peer));
   } finally {
     t.close();
   }
 });
 
-Deno.test("receive parses a real datagram and its source", async () => {
+test("suppresses a large own datagram without a datagram-sized key", async () => {
+  // Regression guard for the old O(n^2) full-datagram string key: a large
+  // datagram must be suppressed via a fixed-size fingerprint, exactly like Node.
+  const port = freeUdpPort();
+  const t = new DenoTransport({
+    port,
+    localAddresses: [],
+    multicastLoopback: false,
+  });
+  try {
+    // Large enough that the old per-byte string key would have been ~8 KB and
+    // O(n^2) to build, yet within the host's UDP datagram limit on loopback.
+    const own = new Uint8Array(8_000);
+    for (let i = 0; i < own.length; i++) own[i] = i & 0xff;
+    // A peer datagram of the same size but different bytes must still arrive.
+    const peer = own.slice();
+    peer[0] = own[0]! ^ 0xff;
+
+    await t.send(own);
+    const received = t.receive();
+    await sendUnicast(port, own); // Looks like our own echo → dropped.
+    await sendUnicast(port, peer); // Genuinely different → delivered.
+    const datagram = await received;
+    assert(datagram !== null, "expected the peer datagram");
+    assertEquals(datagram.data.length, peer.length);
+    assertEquals(datagram.data[0], peer[0]);
+  } finally {
+    t.close();
+  }
+});
+
+test("receive parses a real datagram and its source", async () => {
   const port = freeUdpPort();
   const t = new DenoTransport({ port, localAddresses: [] });
   try {
@@ -217,7 +253,7 @@ Deno.test("receive parses a real datagram and its source", async () => {
     await sendUnicast(port, payload);
     const datagram = await received;
     assert(datagram !== null, "expected a datagram");
-    assertEquals(Array.from(datagram.data), Array.from(payload));
+    assertDeepEquals(Array.from(datagram.data), Array.from(payload));
     assertEquals(datagram.source.address, "127.0.0.1");
     assertEquals(datagram.source.family, "IPv4");
     assert(datagram.source.port > 0);
@@ -226,7 +262,7 @@ Deno.test("receive parses a real datagram and its source", async () => {
   }
 });
 
-Deno.test("wire codec round-trips through a real socket", async () => {
+test("wire codec round-trips through a real socket", async () => {
   const port = freeUdpPort();
   const t = new DenoTransport({ port, localAddresses: [] });
   try {
@@ -261,7 +297,7 @@ Deno.test("wire codec round-trips through a real socket", async () => {
     const decoded = decodeMessage(datagram.data);
     assertEquals(decoded.questions.length, 1);
     assertEquals(decoded.questions[0]?.type, 12);
-    assertEquals(decoded.questions[0]?.name, ["_http", "_tcp", "local"]);
+    assertDeepEquals(decoded.questions[0]?.name, ["_http", "_tcp", "local"]);
   } finally {
     t.close();
   }

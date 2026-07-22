@@ -21,11 +21,13 @@ import { FastFIFO } from "./fast_fifo.ts";
 
 /** Backend that drives mDNS over a raw UDP multicast transport (Deno/Node). */
 export interface TransportBackend extends EngineOptions {
+  /** Transport the shared engine uses for mDNS datagrams. */
   transport: DatagramTransport;
 }
 
 /** Backend that delegates to an OS resolver via an adapter (Tauri/native). */
 export interface AdapterBackend {
+  /** Adapter that implements browse/advertise outside the shared engine. */
   adapter: DnsSdAdapter;
 }
 
@@ -87,17 +89,18 @@ export function dnsSdOverAdapter(adapter: DnsSdAdapter): DnsSd {
         opts.service,
         (event) => queue.push(event),
       );
-      let started: Awaited<ReturnType<DnsSdAdapter["browseStart"]>> | null =
-        null;
-      handlePromise.then((h) => {
-        started = h;
-      }, () => {});
+      // Surface a browse-start failure to the consumer instead of swallowing
+      // it, so callers observe it just like the transport path. Once the queue
+      // is stopped/closed, `fail` is a no-op, so a late rejection is ignored.
+      handlePromise.catch((err) => queue.fail(err));
+      let stopped = false;
       return withStop(
         queue,
         () => {
+          if (stopped) return;
+          stopped = true;
           queue.close();
           void handlePromise.then((h) => h.stop(), () => {});
-          if (started) void started.stop();
         },
         opts.timeoutMs,
         opts.signal,
@@ -108,7 +111,7 @@ export function dnsSdOverAdapter(adapter: DnsSdAdapter): DnsSd {
       const handle = await adapter.advertiseStart(opts.service);
       return makeAdvertiseHandle(
         () => handle.name,
-        () => handle.name,
+        () => handle.fullName,
         () => handle.stop(),
         opts.signal,
       );

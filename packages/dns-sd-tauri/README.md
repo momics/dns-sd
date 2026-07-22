@@ -1,10 +1,8 @@
 # @momics/dns-sd-tauri
 
-The **Tauri v2 runtime** for the `@momics/dns-sd` library family. It provides
-DNS-SD (mDNS / Bonjour / Zeroconf) service discovery and advertisement inside a
-Tauri application across **desktop (Linux / macOS / Windows)** and **mobile
-(iOS + Android)**, and re-exports the **identical public API** as the Deno and
-Node.js runtimes.
+Discover and advertise services on the local network inside a **Tauri v2** app —
+across **desktop (Linux / macOS / Windows)** and **mobile (iOS + Android)** — with
+the same `browse` / `advertise` / `close` API as every `@momics/dns-sd` package.
 
 ```typescript
 import { advertise, browse } from "@momics/dns-sd-tauri";
@@ -12,94 +10,12 @@ import { advertise, browse } from "@momics/dns-sd-tauri";
 
 ## How it works
 
-The shared [`@momics/dns-sd-shared`](../dns-sd-shared) package defines two
-backend seams:
-
-- `DatagramTransport` — raw UDP multicast, where the shared engine speaks mDNS
-  itself (used by the Deno / Node runtimes);
-- `DnsSdAdapter` — a higher-level seam that **delegates to the OS resolver**.
-
-This package uses the **adapter** seam. On iOS and Android you cannot open raw
-UDP multicast sockets, so discovery **must** go through the platform resolver
-(Apple's Bonjour / `NWBrowser` / `NWListener`, Android's `NsdManager`). For
-consistency the desktop path also delegates — to the [`mdns-sd`][mdns-sd] crate
-running in the Rust plugin — rather than driving the shared engine. The shared
-mDNS engine is therefore **not** used on this path; the OS (or `mdns-sd`) owns
-the protocol, and the guest-js adapter maps native browse/advertise events onto
-the shared `ServiceAnnouncement` shape.
-
-```
-guest-js (this pkg)                Rust / native plugin
-──────────────────                 ────────────────────
-browse()  ── DnsSdAdapter ──▶ IPC ──▶ desktop: mdns-sd crate
-advertise()                          iOS:     NWBrowser / NWListener
-close()                              Android: NsdManager
-        ◀── ServiceAnnouncement ◀── native browse/advertise events
-```
-
-## Architecture
-
-| Layer            | Location                          | Responsibility                                       |
-| ---------------- | --------------------------------- | ---------------------------------------------------- |
-| Guest-js adapter | `guest-js/`                       | Implements `DnsSdAdapter`, derives `kind`, TXT codec |
-| Rust plugin      | `src/`                            | Commands, models, desktop `mdns-sd` implementation   |
-| iOS              | `ios/Sources/DnsSdPlugin.swift`   | `NWBrowser` / `NWListener` (Network.framework)       |
-| Android          | `android/.../DnsSdPlugin.kt`      | `NsdManager`                                         |
-| Example          | `examples/tauri-app/`             | A working browse/advertise demo app                  |
-
-The guest-js binding derives the unified `ServiceEventKind`
-(`found` → `resolved` → `updated` → `removed`) that the shared public API
-guarantees, from each platform's `isActive` + host/port signals. Both `kind`
-**and** `isActive` are emitted on every event.
-
-## Public API
-
-Identical to every other `@momics/dns-sd` runtime:
-
-```typescript
-/** Continuously discover service instances. */
-export const browse: (opts: BrowseOpts) => AsyncGenerator<ServiceAnnouncement>;
-
-/** Advertise a service on the local network. */
-export const advertise: (opts: AdvertiseOpts) => Promise<AdvertiseHandle>;
-
-/** Release the underlying adapter. */
-export const close: () => Promise<void>;
-```
-
-### Browse
-
-```typescript
-import { browse } from "@momics/dns-sd-tauri";
-
-const controller = new AbortController();
-for await (const svc of browse({
-  service: { type: "http", protocol: "tcp" },
-  signal: controller.signal,
-})) {
-  console.log(svc.kind, svc.name, svc.host, svc.port, svc.addresses);
-}
-```
-
-`browse` runs until the optional `signal` aborts or the optional `timeoutMs`
-elapses — that lifecycle is owned by the **shared** layer, so the native browse
-is started in continuous mode and torn down when the generator ends.
-
-### Advertise
-
-```typescript
-import { advertise } from "@momics/dns-sd-tauri";
-
-await using handle = await advertise({
-  service: {
-    name: "My Service",
-    type: "http",
-    protocol: "tcp",
-    port: 8080,
-    txt: { path: "/", version: new Uint8Array([1, 0]), secure: true },
-  },
-});
-```
+On mobile you can't open raw multicast sockets, so this runtime always goes
+through the platform DNS-SD resolver (Bonjour / `NWBrowser` on iOS,
+`NsdManager` on Android, the [`mdns-sd`][mdns-sd] crate on desktop) via a small
+Rust plugin. You don't need those details to use the library — see
+[docs/architecture.md](../../docs/architecture.md#the-tauri-runtime-in-detail)
+if you're curious.
 
 ## Installation into a Tauri app
 
@@ -129,6 +45,41 @@ await using handle = await advertise({
    frontend.
 
 See [`examples/tauri-app/`](./examples/tauri-app) for a complete, runnable demo.
+
+## Usage
+
+### Browse
+
+```typescript
+import { browse } from "@momics/dns-sd-tauri";
+
+const controller = new AbortController();
+for await (const svc of browse({
+  service: { type: "http", protocol: "tcp" },
+  signal: controller.signal,
+})) {
+  console.log(svc.kind, svc.name, svc.host, svc.port, svc.addresses);
+}
+```
+
+`browse` runs until the optional `signal` aborts or the optional `timeoutMs`
+elapses.
+
+### Advertise
+
+```typescript
+import { advertise } from "@momics/dns-sd-tauri";
+
+await using handle = await advertise({
+  service: {
+    name: "My Service",
+    type: "http",
+    protocol: "tcp",
+    port: 8080,
+    txt: { path: "/", version: new Uint8Array([1, 0]), secure: true },
+  },
+});
+```
 
 ## TXT records
 
@@ -176,19 +127,30 @@ UTF-8 (the public `setAttribute` accepts only `String` values). Subtypes on
 `advertise` require `setSubtypes` (Android 15 / API 35); at the current
 `compileSdk` (34) they are accepted for API parity but not registered.
 
+**Single-instance adapter:** the Tauri plugin exposes **one** shared DNS-SD
+adapter per app — the module-level `browse` / `advertise` / `close` helpers, and
+concurrent `browse`/`advertise` calls, all drive that single OS-backed instance
+(`NsdManager` / Network.framework / the desktop `mdns-sd` daemon). This differs
+from the Node and Deno runtimes, where their factories (`createNodeDnsSd()` and
+Deno's `createNode()`) can spin up multiple independent instances (each with its
+own socket) in one process. In practice one instance per app is what mobile OS
+resolvers expect; calling `close()` releases it.
+
 ## Testing
 
 | Coverage                                             | Platform | Automated?             |
 | ---------------------------------------------------- | -------- | ---------------------- |
-| Guest-js kind-derivation + TXT codec (unit)          | all      | ✅ `deno test`         |
+| Guest-js kind-derivation + TXT codec (unit)          | all      | ✅ harness (Deno + Node) |
 | Rust command impls: browse↔advertise, TXT, goodbye, timeout | desktop | ✅ `cargo test`  |
 | Real-network discovery (two instances on one host)   | desktop  | ✅ gated, see below    |
 | iOS / Android native paths                            | mobile   | ⚠️ manual via example  |
 
 - **Guest-js unit tests** (`guest-js/adapter-core.test.ts`) exercise the pure
   mapping logic — the `found → resolved → updated → removed` state machine and
-  the TXT encoders — with no webview or IPC. Run with
-  `deno task --cwd packages/dns-sd-tauri test`.
+  the TXT encoders — with no webview or IPC. They register through the shared
+  cross-runtime harness, so the same file runs under both runtimes:
+  `deno task --cwd packages/dns-sd-tauri test` (Deno) and
+  `npm run test:node --workspace @momics/dns-sd-tauri` (Node).
 
 - **Rust tests** (`src/desktop/commands.rs`, `#[cfg(test)]`) drive the desktop
   command implementations directly through a `tauri::test` mock app. TXT

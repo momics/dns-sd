@@ -5,7 +5,7 @@
  * @module
  */
 
-import { assert, assertEquals, test } from "./harness.ts";
+import { assert, assertEquals, test } from "../src/testing/harness.ts";
 import { createDnsSd } from "../src/index.ts";
 import type { DnsSd, ServiceAnnouncement } from "../src/types.ts";
 import { FAST_TIMING } from "../src/engine/constants.ts";

@@ -2,6 +2,17 @@
   "name": "@momics/dns-sd-shared",
   "version": "0.1.0",
   "description": "Runtime-agnostic, standards-compliant DNS-SD (mDNS / RFC 6762 + 6763) foundation. No native dependencies.",
+  "keywords": [
+    "dns-sd",
+    "mdns",
+    "bonjour",
+    "zeroconf",
+    "discovery",
+    "service-discovery",
+    "multicast-dns",
+    "rfc6762",
+    "rfc6763"
+  ],
   "type": "module",
   "main": "./dist/src/index.js",
   "types": "./dist/src/index.d.ts",
@@ -17,20 +28,37 @@
     "./testing": {
       "import": "./dist/src/testing/index.js",
       "types": "./dist/src/testing/index.d.ts"
+    },
+    "./testing/harness": {
+      "import": "./dist/src/testing/harness.js",
+      "types": "./dist/src/testing/harness.d.ts"
     }
   },
   "scripts": {
     "build": "tsc --project tsconfig.json",
     "prepare": "tsc --project tsconfig.json",
     "typecheck": "tsc --noEmit --project tsconfig.json",
-    "test:node": "npm run build && node dist/test/run.js"
+    "test:node": "npm run build && node dist/test/run.js",
+    "size": "npm run build && size-limit"
   },
-  "files": ["dist", "src", "README.md"],
-  "dependencies": {},
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
   "devDependencies": {
+    "@size-limit/esbuild": "^12.1.0",
+    "@size-limit/file": "^12.1.0",
+    "@stryker-mutator/core": "^9.6.1",
+    "size-limit": "^12.1.0",
     "typescript": "^5.7.0"
   },
-  "publishConfig": { "access": "public" },
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "license": "(MIT OR Apache-2.0)",
   "repository": {
     "type": "git",

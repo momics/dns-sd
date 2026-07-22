@@ -56,6 +56,7 @@ export interface BrowseHandleWire {
 export interface AdvertiseHandleWire {
   advertiseId: number;
   name: string;
+  fullName: string;
 }
 
 /** Decode the wire TXT map into the shared {@link TxtRecords} shape. */
@@ -103,21 +104,55 @@ export function toAnnouncement(
   record: ServiceRecordWire,
   kind: ServiceEventKind,
 ): ServiceAnnouncement {
-  return {
-    kind,
+  const base = {
     name: record.name,
     fullName: record.fullName,
     serviceType: record.serviceType,
     protocol: record.protocol,
     domain: record.domain,
     subtypes: record.subtypes ?? [],
-    host: record.host,
-    port: record.port,
-    addresses: record.addresses ?? [],
     txt: decodeTxt(record.txt),
-    isActive: record.isActive,
     lastSeenMs: record.lastSeenMs,
   };
+
+  switch (kind) {
+    case "found":
+      return {
+        ...base,
+        kind: "found",
+        host: null,
+        port: null,
+        addresses: [],
+        isActive: true,
+      };
+    case "resolved":
+      return {
+        ...base,
+        kind: "resolved",
+        host: record.host!,
+        port: record.port!,
+        addresses: record.addresses ?? [],
+        isActive: true,
+      };
+    case "updated":
+      return {
+        ...base,
+        kind: "updated",
+        host: record.host!,
+        port: record.port!,
+        addresses: record.addresses ?? [],
+        isActive: true,
+      };
+    case "removed":
+      return {
+        ...base,
+        kind: "removed",
+        host: record.host,
+        port: record.port,
+        addresses: record.addresses ?? [],
+        isActive: false,
+      };
+  }
 }
 
 /**
@@ -157,6 +192,14 @@ export function createBrowseMessageHandler(
     if (isResolved && resolvedByName.get(key) === false) {
       resolvedByName.set(key, true);
       sink(toAnnouncement(record, "resolved"));
+      return;
+    }
+
+    // Suppress `updated` for an instance that is still unresolved (host/port
+    // null) and was already recorded as unresolved. Emitting `updated` here
+    // would violate the cross-backend contract that `updated` guarantees a
+    // non-null host and port (see ServiceAnnouncement in @momics/dns-sd-shared).
+    if (!isResolved && resolvedByName.get(key) === false) {
       return;
     }
 

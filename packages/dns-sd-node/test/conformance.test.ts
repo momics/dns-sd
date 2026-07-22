@@ -15,7 +15,6 @@
  * @module
  */
 
-import { test } from "node:test";
 import process from "node:process";
 import { createDnsSd, FAST_TIMING } from "@momics/dns-sd-shared";
 import type { DnsSd } from "@momics/dns-sd-shared";
@@ -24,6 +23,7 @@ import {
   conformanceCases,
   type ConformanceHarness,
 } from "@momics/dns-sd-shared/testing";
+import { test } from "@momics/dns-sd-shared/testing/harness";
 import { NodeTransport } from "../src/transport.ts";
 
 const networkEnabled = process.env["DNS_SD_NETWORK_TESTS"] === "1";
@@ -54,15 +54,14 @@ for (const c of conformanceCases()) {
 }
 
 function registerCase(c: ConformanceCase): void {
-  const options = networkEnabled
-    ? {}
-    : { skip: "set DNS_SD_NETWORK_TESTS=1 to run real-network conformance" };
-  test(`conformance: ${c.name}`, options, async () => {
+  // Gated behind DNS_SD_NETWORK_TESTS: registered but reported as `skip` when
+  // multicast networking isn't enabled, so Node and Deno report the same cases.
+  test(`conformance: ${c.name}`, async () => {
     const harness = nodeHarness();
     try {
       await c.run(harness);
     } finally {
       await harness.cleanup();
     }
-  });
+  }, { ignore: !networkEnabled });
 }

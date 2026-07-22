@@ -4,7 +4,12 @@
  * @module
  */
 
-import { assert, assertEquals, test } from "./harness.ts";
+import {
+  assert,
+  assertEquals,
+  assertThrows,
+  test,
+} from "../src/testing/harness.ts";
 import {
   instanceNameLabels,
   namesEqual,
@@ -92,4 +97,38 @@ test("txt: preserves raw bytes", () => {
   const attrs = encodeTxtInput({ blob: bytes });
   assertEquals((attrs.blob as Uint8Array).length, 3);
   assertEquals((attrs.blob as Uint8Array)[1], 255);
+});
+
+test("txt: accepts printable ASCII keys (letters/digits/-/_)", () => {
+  const attrs = encodeTxtInput({ "path-1": "/api", "x_y": true });
+  assertEquals(new TextDecoder().decode(attrs["path-1"] as Uint8Array), "/api");
+  assertEquals(attrs["x_y"], true);
+});
+
+test("txt: rejects an empty key", async () => {
+  await assertThrows(
+    () => encodeTxtInput({ "": "v" }),
+    (err) => err instanceof RangeError && /empty/i.test(String(err)),
+  );
+});
+
+test("txt: rejects a key containing '='", async () => {
+  await assertThrows(
+    () => encodeTxtInput({ "a=b": "v" }),
+    (err) => err instanceof RangeError && /'='/.test(String(err)),
+  );
+});
+
+test("txt: rejects a key with a control character", async () => {
+  await assertThrows(
+    () => encodeTxtInput({ "a\tb": "v" }),
+    (err) => err instanceof RangeError && /printable ASCII/i.test(String(err)),
+  );
+});
+
+test("txt: rejects a key with non-ASCII bytes", async () => {
+  await assertThrows(
+    () => encodeTxtInput({ "café": "v" }),
+    (err) => err instanceof RangeError && /printable ASCII/i.test(String(err)),
+  );
 });

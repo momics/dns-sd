@@ -1,0 +1,35 @@
+{
+  "note": "Per hot-path benchmark, calibration-normalised work units (`units` = mean ns / the calibration loop's mean ns) plus the raw mean ns for reference. The gate (`deno task perf:gate`) compares units-to-units so it is hardware-independent, and fails a benchmark only when its units exceed slowdownFactor x the baseline — a coarse, noise-tolerant guard for order-of-magnitude regressions. Re-baseline deliberately (`deno task perf:baseline`) and note it in CHANGELOG.md.",
+  "slowdownFactor": 4,
+  "calibrationNs": 4925.19,
+  "benches": {
+    "cache/add: insert browse batch": {
+      "units": 832.4347,
+      "avgNs": 4099897
+    },
+    "cache/knownAnswers: scan populated cache": {
+      "units": 3.2452,
+      "avgNs": 15983
+    },
+    "txt/decode: attributes to public records": {
+      "units": 0.0315,
+      "avgNs": 155.28
+    },
+    "txt/encode: normalise service attributes": {
+      "units": 0.3018,
+      "avgNs": 1486.6
+    },
+    "wire/decode: browse response": {
+      "units": 1.4637,
+      "avgNs": 7209
+    },
+    "wire/encode: browse response": {
+      "units": 1.5685,
+      "avgNs": 7725
+    },
+    "wire/roundtrip: browse response": {
+      "units": 3.6139,
+      "avgNs": 17799
+    }
+  }
+}

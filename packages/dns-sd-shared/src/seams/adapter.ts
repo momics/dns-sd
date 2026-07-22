@@ -28,6 +28,12 @@ export interface AdapterAdvertiseHandle {
    * if the OS resolved a conflict by renaming.
    */
   readonly name: string;
+  /**
+   * The final fully-qualified instance name (e.g. `Instance._http._tcp.local`),
+   * as reported by the OS resolver. Kept distinct from {@link name} so the
+   * adapter path matches the transport path's `advertise().fullName`.
+   */
+  readonly fullName: string;
   /** Stop this advertisement (maps to the platform's advertise-stop call). */
   stop(): Promise<void>;
 }

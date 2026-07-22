@@ -435,6 +435,9 @@ class DnsSdPlugin(private val activity: Activity): Plugin(activity) {
         val ret = JSObject()
         ret.put("advertiseId", advertiseId)
         ret.put("name", name)
+        // A transport-path-matching FQN (`Instance._type._proto.local`, no
+        // trailing dot) so `advertise().fullName` is consistent across runtimes.
+        ret.put("fullName", "$name.$serviceType.local")
         invoke.resolve(ret)
     }
 

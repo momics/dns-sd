@@ -1,21 +1,17 @@
 # @momics/dns-sd-deno
 
-The **Deno runtime package** for the `@momics/dns-sd` library family. It is a
-thin adapter: it supplies a real UDP-multicast `DatagramTransport` to the
-runtime-agnostic engine in
-[`@momics/dns-sd-shared`](../dns-sd-shared/README.md) and re-exports the
-**identical public API** (`browse` / `advertise` / `close`) plus all shared
-types. All the standards-compliant mDNS/DNS-SD logic (RFC 6762 + RFC 6763)
-lives in the shared package; this package only owns the socket.
+Discover and advertise services on the local network from **Deno** — the same
+`browse` / `advertise` / `close` API as every `@momics/dns-sd` package.
+Standards-compliant mDNS / DNS-SD (RFC 6762 + RFC 6763), pure TypeScript, no
+native dependencies.
 
 > **Deno desktop only.** This package needs raw UDP multicast, which is
 > available on Deno for desktop/server. It is **not** for Deno Deploy or other
-> sandboxes without raw sockets. For those, use an OS-resolver adapter package
-> instead.
+> sandboxes without raw sockets.
 
 ## Install / import
 
-```ts
+```ts no-check
 // Published (placeholder — publishing is not set up in this repo yet):
 import { advertise, browse, close } from "jsr:@momics/dns-sd-deno";
 
@@ -60,6 +56,8 @@ await close();
 Pass `timeoutMs` or an `AbortSignal` to stop it:
 
 ```ts
+import { browse } from "@momics/dns-sd-deno";
+
 browse({ service: { type: "http", protocol: "tcp" }, timeoutMs: 5000 });
 ```
 
@@ -84,13 +82,10 @@ await handle.stop();
 await close();
 ```
 
-## API
+## Configuration
 
-Everything from `@momics/dns-sd-shared` is re-exported unchanged
-(`createDnsSd`, `dnsSdOverTransport`, the `DatagramTransport` seam, the
-`MDNS_IPV4` / `MDNS_IPV6` / `MDNS_PORT` constants, and all public types such as
-`BrowseOpts`, `AdvertiseOpts`, `ServiceAnnouncement`, `AdvertiseHandle`, …).
-
+Everything from `@momics/dns-sd-shared` is re-exported unchanged (`createDnsSd`,
+the public types, and the `MDNS_IPV4` / `MDNS_IPV6` / `MDNS_PORT` constants).
 Deno-specific additions:
 
 - **`browse` / `advertise` / `close`** — the top-level convenience API, backed
@@ -108,7 +103,7 @@ Deno-specific additions:
   | `interfaceAddress`  | `"0.0.0.0"`                | IPv4 membership interface               |
   | `interfaceIndex`    | `0`                        | IPv6 membership interface               |
   | `hostname`          | `Deno.hostname()`          | advertise host derivation               |
-  | `localAddresses`    | discovered                 | own addrs; `[]` for same-host (see below) |
+  | `localAddresses`    | discovered                 | own addrs; `[]` for [same-host testing][same-host] |
   | `multicastLoopback` | `true`                     | hear co-located sockets                 |
   | `multicastTtl`      | —                          | IPv4 TTL                                |
 
@@ -142,17 +137,13 @@ deno task test:network   # + the shared conformance suite over REAL multicast
   `DenoTransport` sockets. They use genuine multicast, so they are **gated**
   behind `DNS_SD_NETWORK_TESTS=1` and skipped by default.
 
-Multiple nodes coexist on one host by giving each `DenoTransport`
-`localAddresses: []`. The shared engine ignores datagrams whose source address
-is in `transport.localAddresses()`; on one host every node shares the same
-source IP, so real addresses would make each node filter its siblings out.
-With `[]` the engine's IP-based own-echo filter becomes a no-op (siblings get
-through), `DenoTransport` suppresses our OWN loopback datagrams itself (it
-tracks recently-sent bytes and drops an exact match), and `localAddresses()`
-falls back to loopback (`127.0.0.1` / `::1`) so advertised services still carry
-an A/AAAA record. On a real multi-host network, leave `localAddresses` at its
-default (the host's real interface addresses) for correct cross-host records.
+Multiple nodes can coexist on one host by giving each `DenoTransport`
+`localAddresses: []` — this is how the conformance suite runs many nodes on a
+single machine. See
+[docs/architecture.md][same-host] for why, and the trade-offs.
 
 > Note: some networks (and many CI runners) administratively block multicast
 > routing. On such hosts the gated conformance suite cannot pass — run it on a
 > multicast-capable machine.
+
+[same-host]: ../../docs/architecture.md#running-multiple-instances-on-one-host

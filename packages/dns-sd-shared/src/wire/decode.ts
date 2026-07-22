@@ -21,6 +21,41 @@ import {
 
 const HEADER_LENGTH = 12;
 
+/**
+ * Minimum on-wire size of a question: a root name (1 byte) + QTYPE (2) +
+ * QCLASS (2).
+ */
+const MIN_QUESTION_BYTES = 5;
+
+/**
+ * Minimum on-wire size of a resource record: a root name (1 byte) + TYPE (2) +
+ * CLASS (2) + TTL (4) + RDLENGTH (2), with zero-length RDATA.
+ */
+const MIN_RECORD_BYTES = 11;
+
+/**
+ * Reject a section whose declared count could not possibly fit in the bytes that
+ * remain — e.g. a u16 count of 65535 over a near-empty datagram. This bounds a
+ * DoS-shaped claim (a huge count that would otherwise drive a long parse loop)
+ * without imposing a flat ceiling that would wrongly reject a legitimately large
+ * mDNS datagram: RFC 6762 permits messages up to ~9000 bytes, and a §7.1
+ * known-answer suppression list can carry many hundreds of records. The
+ * bounds-checked {@link Reader} still guards every individual read; this is an
+ * early, explicit rejection of an impossible claim.
+ */
+function checkSectionFits(
+  count: number,
+  minBytes: number,
+  remaining: number,
+  section: string,
+): void {
+  if (count * minBytes > remaining) {
+    throw new WireError(
+      `${section} count ${count} cannot fit in ${remaining} remaining byte(s)`,
+    );
+  }
+}
+
 /** Decode a complete DNS message. Throws {@link WireError} if malformed. */
 export function decodeMessage(bytes: Uint8Array): DnsMessage {
   if (bytes.byteLength < HEADER_LENGTH) {
@@ -37,6 +72,12 @@ export function decodeMessage(bytes: Uint8Array): DnsMessage {
   const anCount = reader.u16();
   const nsCount = reader.u16();
   const arCount = reader.u16();
+
+  const remaining = bytes.byteLength - HEADER_LENGTH;
+  checkSectionFits(qdCount, MIN_QUESTION_BYTES, remaining, "question");
+  checkSectionFits(anCount, MIN_RECORD_BYTES, remaining, "answer");
+  checkSectionFits(nsCount, MIN_RECORD_BYTES, remaining, "authority");
+  checkSectionFits(arCount, MIN_RECORD_BYTES, remaining, "additional");
 
   const header: DnsHeader = {
     id,
@@ -213,9 +254,9 @@ function decodeTxt(reader: Reader, rdataEnd: number): TxtAttributes {
 
     if (eq === -1) {
       // No '=': attribute present with no value.
-      attributes[latin1(raw)] = true;
+      attributes[utf8(raw)] = true;
     } else {
-      const key = latin1(raw.subarray(0, eq));
+      const key = utf8(raw.subarray(0, eq));
       const value = raw.subarray(eq + 1);
       // `key=` (empty value) is represented as null; a non-empty value as bytes.
       attributes[key] = value.length === 0 ? null : value.slice();
@@ -253,13 +294,11 @@ function decodeNsecBitmap(reader: Reader, rdataEnd: number): number[] {
   return types;
 }
 
-function latin1(bytes: Uint8Array): string {
-  let out = "";
-  for (let i = 0; i < bytes.length; i++) {
-    out += String.fromCharCode(bytes[i] as number);
-  }
-  return out;
+function utf8(bytes: Uint8Array): string {
+  return UTF8_DECODER.decode(bytes);
 }
+
+const UTF8_DECODER = new TextDecoder();
 
 /** Collapse the longest run of zero groups in an IPv6 address to `::`. */
 function compressIpv6(groups: string[]): string {

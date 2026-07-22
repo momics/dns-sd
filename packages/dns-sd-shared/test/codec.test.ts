@@ -8,10 +8,11 @@
 import {
   assert,
   assertBytesEqual,
+  assertDeepEquals,
   assertEquals,
   assertThrows,
   test,
-} from "./harness.ts";
+} from "../src/testing/harness.ts";
 import {
   decodeMessage,
   DnsClass,
@@ -221,6 +222,72 @@ test("codec: name compression is used and decodes correctly", () => {
   assertEquals(ptr.data.name.join("."), "Instance._http._tcp.local");
 });
 
+test("codec: non-ASCII instance names round-trip as UTF-8 (RFC 6763 §4.1.1)", () => {
+  // "Café" with a *combining* acute accent (e + U+0301), plus CJK and an emoji.
+  const instanceLabel = "Cafe\u0301 \u30B5\u30FC\u30D3\u30B9 \uD83C\uDF89";
+  const instance = [instanceLabel, "_http", "_tcp", "local"];
+  const service = ["_http", "_tcp", "local"];
+  const host = ["my-host", "local"];
+  // A non-ASCII TXT value must survive the wire round-trip too.
+  const description = "Café ☕";
+  const msg: DnsMessage = {
+    header: responseHeader(),
+    questions: [],
+    answers: [
+      {
+        name: service,
+        type: ResourceType.PTR,
+        class: DnsClass.IN,
+        ttl: 4500,
+        flush: false,
+        data: { kind: "PTR", name: instance },
+      },
+      {
+        name: instance,
+        type: ResourceType.SRV,
+        class: DnsClass.IN,
+        ttl: 120,
+        flush: true,
+        data: { kind: "SRV", priority: 0, weight: 0, port: 8080, target: host },
+      },
+      {
+        name: instance,
+        type: ResourceType.TXT,
+        class: DnsClass.IN,
+        ttl: 120,
+        flush: true,
+        data: {
+          kind: "TXT",
+          attributes: { desc: new TextEncoder().encode(description) },
+        },
+      },
+    ],
+    authorities: [],
+    additionals: [],
+  };
+
+  const decoded = decodeMessage(encodeMessage(msg));
+
+  const ptr = decoded.answers.find(isPTR)!;
+  // The decoded labels must be byte-for-byte identical strings to the input.
+  assertDeepEquals(ptr.data.name, instance);
+
+  // name / fullName are derived exactly as ServiceAnnouncement does in
+  // engine/query.ts emit(): fullName = labels.join("."), name = labels[0].
+  const labels = ptr.data.name;
+  assertEquals(labels[0], instanceLabel);
+  assertEquals(labels.join("."), `${instanceLabel}._http._tcp.local`);
+
+  const txt = decoded.answers.find(isTXT)!;
+  assertEquals(
+    new TextDecoder().decode(txt.data.attributes.desc as Uint8Array),
+    description,
+  );
+
+  // Encode side must write UTF-8 so the codec is symmetric.
+  assertBytesEqual(encodeMessage(decoded), encodeMessage(msg));
+});
+
 test("codec: AAAA round-trips", () => {
   const msg: DnsMessage = {
     header: responseHeader(),
@@ -239,6 +306,46 @@ test("codec: AAAA round-trips", () => {
   const bytes = encodeMessage(msg);
   const decoded = decodeMessage(bytes);
   assertBytesEqual(encodeMessage(decoded), bytes);
+});
+
+function nsecMessage(types: number[]): DnsMessage {
+  return {
+    header: responseHeader(),
+    questions: [],
+    answers: [{
+      name: ["host", "local"],
+      type: ResourceType.NSEC,
+      class: DnsClass.IN,
+      ttl: 120,
+      flush: true,
+      data: { kind: "NSEC", nextDomainName: ["host", "local"], types },
+    }],
+    authorities: [],
+    additionals: [],
+  };
+}
+
+test("codec: NSEC round-trips", () => {
+  const bytes = encodeMessage(
+    nsecMessage([ResourceType.PTR, ResourceType.SRV]),
+  );
+  const decoded = decodeMessage(bytes);
+  const answer = decoded.answers[0]!;
+  assert(answer.data.kind === "NSEC");
+  assertEquals(
+    answer.data.types.sort((a, b) => a - b).join(","),
+    [ResourceType.PTR, ResourceType.SRV].join(","),
+  );
+  assertBytesEqual(encodeMessage(decoded), bytes);
+});
+
+test("codec: NSEC with no types is rejected on encode", async () => {
+  // A zero-length bitmap window is not decodable, so the encoder must refuse
+  // it rather than emit bytes its own decoder rejects.
+  await assertThrows(
+    () => encodeMessage(nsecMessage([])),
+    (e) => e instanceof RangeError,
+  );
 });
 
 // ── Hardening ─────────────────────────────────────────────────────────────────
@@ -371,4 +478,210 @@ test("Reader: bounds are enforced on primitive reads", async () => {
   assertEquals(r.u8(), 1);
   assertEquals(r.u8(), 2);
   await assertThrows(() => r.u8(), (e) => e instanceof WireError);
+});
+
+// ── Hostile input (issue #21) ─────────────────────────────────────────────────
+
+/**
+ * Decode `bytes` and assert it both throws a {@link WireError} and returns
+ * within `budgetMs`. The time bound is the load-bearing part: a pointer loop or
+ * decompression bomb that hangs would blow the budget even though it "throws".
+ */
+async function assertWireErrorBounded(
+  bytes: Uint8Array,
+  budgetMs = 100,
+): Promise<void> {
+  const start = Date.now();
+  await assertThrows(
+    () => decodeMessage(bytes),
+    (e) => e instanceof WireError,
+  );
+  const elapsed = Date.now() - start;
+  assert(
+    elapsed < budgetMs,
+    `decode took ${elapsed}ms (budget ${budgetMs}ms) — possible pointer-loop hang`,
+  );
+}
+
+test("hostile: cyclic compression pointer throws WireError in bounded time", async () => {
+  // A mutual pointer cycle: the name at offset 12 jumps to 14, which jumps back
+  // to 12. The backward-only rule must reject it *and* the decoder must not spin.
+  const bytes = new Uint8Array([
+    0,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0, // header, QD=1
+    0xc0,
+    0x0e, // offset 12: pointer → offset 14
+    0xc0,
+    0x0c, // offset 14: pointer → offset 12 (cycle)
+  ]);
+  await assertWireErrorBounded(bytes);
+});
+
+test("hostile: self-referential compression pointer is bounded", async () => {
+  const bytes = new Uint8Array([
+    0,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0, // header, QD=1
+    0xc0,
+    0x0c, // offset 12: pointer → itself
+  ]);
+  await assertWireErrorBounded(bytes);
+});
+
+test("hostile: compression pointer past end of message throws WireError", async () => {
+  // A well-formed-looking QNAME whose pointer targets an offset beyond the
+  // buffer. Pad the message so the pointer value is unambiguously past the end.
+  const bytes = new Uint8Array([
+    0,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0, // header, QD=1
+    3,
+    0x66,
+    0x6f,
+    0x6f, // label "foo"
+    0xc0,
+    0x7f, // pointer → offset 127 (far past end)
+  ]);
+  await assertWireErrorBounded(bytes);
+});
+
+test("hostile: an impossible record count for the buffer throws WireError", async () => {
+  // ANCOUNT claims 60000 records but the body is empty — those records cannot
+  // possibly fit, so the claim is rejected outright (never a hang or huge alloc)
+  // while a legitimately large datagram (see the known-answer test) is accepted.
+  const bytes = new Uint8Array([
+    0,
+    0,
+    0x84,
+    0,
+    0,
+    0,
+    0xea,
+    0x60,
+    0,
+    0,
+    0,
+    0, // header, AN=60000
+  ]);
+  await assertWireErrorBounded(bytes);
+});
+
+test("codec: a large known-answer list (hundreds of records) is accepted", () => {
+  // RFC 6762 §7.1 known-answer suppression lists can be large: a single valid
+  // ~9000-byte datagram may carry many hundreds of PTR answers. The decoder must
+  // accept counts well past any small ceiling as long as the bytes are present.
+  const service = ["_http", "_tcp", "local"];
+  const answers: DnsMessage["answers"] = [];
+  for (let i = 0; i < 400; i++) {
+    answers.push({
+      name: service,
+      type: ResourceType.PTR,
+      class: DnsClass.IN,
+      ttl: 4500,
+      flush: false,
+      data: { kind: "PTR", name: [`inst-${i}`, "_http", "_tcp", "local"] },
+    });
+  }
+  const msg: DnsMessage = {
+    header: responseHeader(),
+    questions: [],
+    answers,
+    authorities: [],
+    additionals: [],
+  };
+  const decoded = decodeMessage(encodeMessage(msg));
+  assertEquals(decoded.answers.length, 400);
+});
+
+test("hostile: a boundary-sized TXT value (255 bytes) decodes", () => {
+  // The largest a single TXT string can be is 255 bytes; "k=" + 253 bytes hits
+  // that boundary exactly and must round-trip rather than being rejected.
+  const value = new Uint8Array(253).fill(0x61); // 253 × 'a'
+  const msg: DnsMessage = {
+    header: responseHeader(),
+    questions: [],
+    answers: [{
+      name: ["host", "local"],
+      type: ResourceType.TXT,
+      class: DnsClass.IN,
+      ttl: 120,
+      flush: true,
+      data: { kind: "TXT", attributes: { k: value } },
+    }],
+    authorities: [],
+    additionals: [],
+  };
+  const decoded = decodeMessage(encodeMessage(msg));
+  const txt = decoded.answers.find(isTXT)!;
+  assertEquals((txt.data.attributes.k as Uint8Array).length, 253);
+});
+
+test("hostile: a TXT string length running past its RDATA throws", async () => {
+  // RDLENGTH says 4 bytes of RDATA, but the first TXT string claims length 200.
+  const bytes = new Uint8Array([
+    0,
+    0,
+    0x84,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0, // header, AN=1
+    4,
+    0x68,
+    0x6f,
+    0x73,
+    0x74,
+    0, // name "host"
+    0,
+    16, // TYPE = TXT
+    0,
+    1, // CLASS = IN
+    0,
+    0,
+    0,
+    120, // TTL
+    0,
+    4, // RDLENGTH = 4
+    200,
+    0x61,
+    0x62,
+    0x63, // TXT string len=200 but only 3 bytes follow
+  ]);
+  await assertThrows(
+    () => decodeMessage(bytes),
+    (e) => e instanceof WireError,
+  );
 });

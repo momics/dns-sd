@@ -7,6 +7,8 @@ edition = "2021"
 rust-version = "1.77.2"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/momics/dns-sd"
+keywords = ["dns-sd", "mdns", "bonjour", "zeroconf", "tauri-plugin"]
+categories = ["network-programming", "os"]
 exclude = ["/examples", "/dist-js", "/guest-js", "/node_modules"]
 links = "tauri-plugin-dns-sd"
 
@@ -21,6 +23,13 @@ log = "0.4"
 mdns-sd = "=0.17.2"
 tokio = { version = "1", features = ["rt", "time", "sync", "macros"] }
 tokio-util = "0.7"
+
+# iOS needs tauri's `wry` feature: `PluginApi::register_ios_plugin` is gated on
+# `cfg(all(target_os = "ios", feature = "wry"))`. The base dependency keeps
+# `default-features = false` (so desktop/Android stay lean), so enable `wry`
+# only for the iOS target.
+[target.'cfg(target_os = "ios")'.dependencies]
+tauri = { version = "2.8.5", default-features = false, features = ["wry"] }
 
 [build-dependencies]
 tauri-plugin = { version = "2.4.0", features = ["build"] }

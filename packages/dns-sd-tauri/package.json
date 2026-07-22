@@ -2,6 +2,17 @@
   "name": "@momics/dns-sd-tauri",
   "version": "0.1.0",
   "description": "Tauri v2 runtime for @momics/dns-sd — DNS-SD (mDNS / Bonjour / Zeroconf) service discovery and advertisement across desktop (Linux/macOS/Windows) and mobile (iOS + Android), via the OS resolver.",
+  "keywords": [
+    "dns-sd",
+    "mdns",
+    "bonjour",
+    "zeroconf",
+    "discovery",
+    "service-discovery",
+    "tauri",
+    "tauri-plugin",
+    "mobile"
+  ],
   "type": "module",
   "main": "./dist-js/index.js",
   "types": "./dist-js/index.d.ts",
@@ -25,15 +36,20 @@
   "scripts": {
     "build": "tsc --project tsconfig.json && npm run build:global",
     "build:global": "esbuild guest-js/index.ts --bundle --format=iife --global-name=__TAURI_PLUGIN_DNS_SD__ --outfile=dist-js/global.js",
-    "typecheck": "tsc --noEmit --project tsconfig.json"
+    "typecheck": "tsc --noEmit --project tsconfig.json",
+    "test:node": "tsc --project tsconfig.test.json && node dist-test/run.js"
   },
   "dependencies": {
     "@momics/dns-sd-shared": "0.1.0",
     "@tauri-apps/api": "^2"
   },
   "devDependencies": {
+    "@types/node": "^22.20.0",
     "esbuild": "^0.24.0",
     "typescript": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=18"
   },
   "publishConfig": { "access": "public" },
   "license": "(MIT OR Apache-2.0)",

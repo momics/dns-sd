@@ -1,6 +1,12 @@
 /**
- * A tiny cross-runtime test harness. The same test files run unchanged under
- * both `deno run test/run.ts` and (after `tsc`) `node dist/test/run.js`.
+ * A tiny, dependency-free cross-runtime test harness shared by every TypeScript
+ * package in this repo. The same test files run unchanged under both
+ * `deno run test/run.ts` and (after `tsc`) `node dist/test/run.js`.
+ *
+ * Runtime packages import it via `@momics/dns-sd-shared/testing/harness` so that
+ * registration, assertions and reporting are identical everywhere. Test files
+ * may still import their own runtime APIs (`node:dgram`, `Deno.*`) — the harness
+ * only unifies registration/assertions/reporting, not the runtime.
  *
  * Tests register themselves via {@link test}; {@link runAll} executes them and
  * reports results, exiting non-zero on any failure.
@@ -8,16 +14,30 @@
  * @module
  */
 
+/** Options accepted when registering a test. */
+export interface TestOptions {
+  /** When true, the test is registered but skipped (reported as `skip`). */
+  ignore?: boolean;
+}
+
 interface RegisteredTest {
   name: string;
   fn: () => void | Promise<void>;
+  ignore: boolean;
 }
 
 const registry: RegisteredTest[] = [];
 
-/** Register a test case. */
-export function test(name: string, fn: () => void | Promise<void>): void {
-  registry.push({ name, fn });
+/**
+ * Register a test case. Pass `{ ignore: true }` to register but skip it — useful
+ * for network-gated suites so both runtimes report the same skipped cases.
+ */
+export function test(
+  name: string,
+  fn: () => void | Promise<void>,
+  options?: TestOptions,
+): void {
+  registry.push({ name, fn, ignore: options?.ignore ?? false });
 }
 
 /** Assert a condition is truthy. */
@@ -135,9 +155,15 @@ function hex(bytes: Uint8Array): string {
 /** Run every registered test, print a report, and exit with an appropriate code. */
 export async function runAll(): Promise<void> {
   let passed = 0;
+  let skipped = 0;
   const failures: { name: string; error: unknown }[] = [];
 
   for (const t of registry) {
+    if (t.ignore) {
+      skipped++;
+      log(`  skip ${t.name}`);
+      continue;
+    }
     try {
       await t.fn();
       passed++;
@@ -153,8 +179,12 @@ export async function runAll(): Promise<void> {
     }
   }
 
+  const ran = registry.length - skipped;
   log("");
-  log(`${passed}/${registry.length} tests passed, ${failures.length} failed`);
+  log(
+    `${passed}/${ran} tests passed, ${failures.length} failed` +
+      (skipped > 0 ? `, ${skipped} skipped` : ""),
+  );
 
   if (failures.length > 0) exit(1);
 }

@@ -8,7 +8,7 @@
  * fail through no fault of the code. Run them locally / in an integration
  * environment with:
  *
- *   DNS_SD_NETWORK_TESTS=1 deno test --unstable-net --allow-net --allow-sys
+ *   deno task test:network   (from packages/dns-sd-deno)
  *
  * ── How multiple nodes coexist on one host ──
  * The shared engine ignores datagrams whose source address is in
@@ -27,6 +27,7 @@ import {
   conformanceCases,
   type ConformanceHarness,
 } from "@momics/dns-sd-shared/testing";
+import { test } from "@momics/dns-sd-shared/testing/harness";
 import { FAST_TIMING } from "@momics/dns-sd-shared";
 import { DenoTransport } from "../src/transport.ts";
 
@@ -63,10 +64,9 @@ function realTransportHarness(): ConformanceHarness {
 }
 
 for (const c of conformanceCases()) {
-  Deno.test({
-    name: `conformance (real transport): ${c.name}`,
-    ignore: !NETWORK_TESTS,
-    async fn() {
+  test(
+    `conformance (real transport): ${c.name}`,
+    async () => {
       const harness = realTransportHarness();
       try {
         await c.run(harness);
@@ -74,5 +74,6 @@ for (const c of conformanceCases()) {
         await harness.cleanup();
       }
     },
-  });
+    { ignore: !NETWORK_TESTS },
+  );
 }

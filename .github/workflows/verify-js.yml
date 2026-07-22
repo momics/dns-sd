@@ -1,0 +1,116 @@
+name: Verify (JS)
+
+# Reusable workflow: fmt/lint/typecheck plus the full TypeScript test suite,
+# under BOTH Deno and Node.js. Every TS package registers, asserts and reports
+# through the shared cross-runtime harness (packages/dns-sd-shared/src/testing/
+# harness.ts), so a single command per runtime runs the whole suite with
+# identical output:
+#
+#   Deno  →  deno task test
+#   Node  →  npm run test:node
+#
+# Called by:
+#   - ci.yml       (on push / pull_request)
+#   - publish.yml  (before publishing a tag, against the tag's SHA)
+#
+# Keeping these jobs in one reusable workflow guarantees a tagged release runs
+# the exact same checks as CI, so a red build can never be published.
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  # ── Formatting, linting and typecheck ────────────────────────────────────────
+  verify:
+    name: Verify (fmt · lint · typecheck)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.9
+
+      - run: npm ci
+
+      - name: deno fmt --check
+        run: deno fmt --check
+
+      - name: deno lint
+        run: deno lint
+
+      - name: deno check (typecheck source + tests, all TS packages)
+        run: |
+          deno task check
+          deno task check:deno-runtime
+          deno task check:tauri
+
+      - name: deno doc --lint (public JSDoc completeness)
+        run: deno task check:docs
+
+      - name: Executable README examples type-check against the real API
+        run: deno task check:docs-examples
+
+      - name: Public API surface unchanged (frozen snapshot)
+        run: deno task check:api
+
+      - name: Build shared package (dependency for tsc typecheck)
+        run: npm run build --workspace @momics/dns-sd-shared
+
+      - name: tsc typecheck (all workspaces)
+        run: npm run typecheck
+
+  # ── Full TypeScript suite under Deno (single command) ────────────────────────
+  test-deno:
+    name: Test (Deno)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.9
+      # Runs the shared, dns-sd-deno and tauri guest-js suites through the shared
+      # harness. Real-network conformance is gated behind DNS_SD_NETWORK_TESTS
+      # and reported as skipped here.
+      - name: Run the whole TS suite under Deno
+        run: deno task test
+
+  # ── Full TypeScript suite under Node.js (single command) ─────────────────────
+  test-node:
+    name: Test (Node.js)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm ci
+      # tsc-builds each package, then runs the shared, dns-sd-node and tauri
+      # guest-js suites through the shared harness. Real-network conformance is
+      # gated behind DNS_SD_NETWORK_TESTS and reported as skipped here.
+      - name: Run the whole TS suite under Node
+        run: npm run test:node
+
+  # ── Published bundle-size ratchet (Node-only) ────────────────────────────────
+  size:
+    name: Size (bundle)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm ci
+      # Builds @momics/dns-sd-shared and measures the minified + gzipped ESM of
+      # each published entrypoint (., ./wire, ./testing, ./testing/harness)
+      # against the committed limits in packages/dns-sd-shared/.size-limit.json.
+      # Fails when an entrypoint grows past its limit — the "thin, pure-TS, zero
+      # native deps" promise, machine-enforced.
+      - name: size-limit (published entrypoints)
+        run: npm run size --workspace @momics/dns-sd-shared

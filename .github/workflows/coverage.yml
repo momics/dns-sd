@@ -1,0 +1,169 @@
+name: Coverage
+
+# Coverage reporting for the TypeScript packages (Node/c8 + Deno) and the Tauri
+# Rust plugin (cargo-llvm-cov). This is INFORMATIONAL only: each job prints a
+# summary to the run's job-summary page and uploads an lcov report as an
+# artifact. No coverage service and no enforced threshold — the numbers are here
+# to watch trends, not to gate merges.
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "**.md"
+      - "LICENSE*"
+      - ".editorconfig"
+      - ".gitignore"
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── TypeScript coverage under Node.js (c8, source-mapped back to .ts) ─────────
+  ts:
+    name: TS coverage (Node · c8)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm ci
+
+      - name: Build TypeScript
+        run: |
+          npm run build --workspace @momics/dns-sd-shared
+          npm run build --workspace @momics/dns-sd-node
+
+      - name: Coverage — @momics/dns-sd-shared (core)
+        run: |
+          set -o pipefail
+          npx c8 --reporter=text-summary --reporter=lcov \
+            --report-dir=coverage/shared \
+            node packages/dns-sd-shared/dist/test/run.js | tee shared-cov.txt
+          {
+            echo '### TS coverage — `@momics/dns-sd-shared` (core, under Node)'
+            echo '```'
+            sed -n '/Coverage summary/,/===$/p' shared-cov.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Coverage — @momics/dns-sd-node (transport)
+        run: |
+          set -o pipefail
+          npx c8 --reporter=text-summary --reporter=lcov \
+            --report-dir=coverage/node \
+            node packages/dns-sd-node/dist/test/run.js | tee node-cov.txt
+          {
+            echo '### TS coverage — `@momics/dns-sd-node` (transport tests)'
+            echo '_Includes shared-core lines exercised via the transport._'
+            echo '```'
+            sed -n '/Coverage summary/,/===$/p' node-cov.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload lcov reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-ts
+          path: coverage/**/lcov.info
+          if-no-files-found: error
+
+  # ── TypeScript coverage under Deno (dns-sd-deno runtime) ─────────────────────
+  deno:
+    name: Deno coverage (dns-sd-deno)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.9
+
+      - name: Run dns-sd-deno tests with coverage
+        working-directory: packages/dns-sd-deno
+        run: |
+          deno run --unstable-net --allow-net --allow-sys --allow-env \
+            --coverage=coverage-raw test/run.ts
+
+      - name: Report coverage
+        working-directory: packages/dns-sd-deno
+        run: |
+          deno coverage coverage-raw --lcov > lcov.info
+          {
+            echo '### Deno coverage — `@momics/dns-sd-deno` (transport)'
+            echo '```'
+            deno coverage coverage-raw | tail -n 40
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload lcov report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-deno
+          path: packages/dns-sd-deno/lcov.info
+          if-no-files-found: error
+
+  # ── Rust coverage for the Tauri plugin (cargo-llvm-cov, desktop) ─────────────
+  rust:
+    name: Rust coverage (tauri plugin)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/dns-sd-tauri
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux system dependencies
+        run: |
+          # Drop GitHub's flaky packages.microsoft.com apt source (serves an
+          # invalid InRelease → `apt-get update` exits 100) before updating. On
+          # Ubuntu 24.04 it's a deb822 *.sources file (e.g. azure-cli) that a
+          # *microsoft*.list glob misses, so remove every source referencing it
+          # regardless of file name or format.
+          sudo sh -c 'grep -rlZ "packages\.microsoft\.com" /etc/apt/sources.list.d 2>/dev/null | xargs -0 -r rm -f' || true
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libjavascriptcoregtk-4.1-dev \
+            libsoup-3.0-dev \
+            librsvg2-dev \
+            libglib2.0-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: packages/dns-sd-tauri
+
+      - name: Run tests under llvm-cov
+        run: cargo llvm-cov --no-report
+
+      - name: Report coverage
+        run: |
+          cargo llvm-cov report --lcov --output-path lcov.info
+          {
+            echo '### Rust coverage — `tauri-plugin-dns-sd` (desktop)'
+            echo '```'
+            cargo llvm-cov report --summary-only
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload lcov report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-rust
+          path: packages/dns-sd-tauri/lcov.info
+          if-no-files-found: error

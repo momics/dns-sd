@@ -43,24 +43,26 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # ── 0. Verify ─────────────────────────────────────────────────────────────────
-  # Build + typecheck the whole workspace, and (on a tag) assert every package
-  # version matches the tag so we never ship mismatched versions.
-  verify:
-    name: Verify before publish
+  # ── 0. Full CI gate ───────────────────────────────────────────────────────────
+  # Run the identical CI checks (JS suites under Deno+Node, Tauri plugin build +
+  # tests on all desktop OSes) against the tag's SHA. Publishing is blocked unless
+  # these pass, so a red build can never be released.
+  verify-js:
+    name: CI
+    uses: ./.github/workflows/verify-js.yml
+
+  verify-tauri:
+    name: CI
+    uses: ./.github/workflows/verify-tauri.yml
+
+  # ── 0b. Version gate ──────────────────────────────────────────────────────────
+  # Assert every package version matches the tag so we never ship mismatched
+  # versions. Fast, so it runs alongside the CI gate.
+  check-versions:
+    name: Check versions match the tag
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "24"
-
-      - uses: denoland/setup-deno@v2
-        with:
-          deno-version: v2.x
-
-      - run: npm ci
 
       - name: Check versions match the tag
         if: startsWith(github.ref, 'refs/tags/v')
@@ -86,11 +88,6 @@ jobs:
             "$(sed -n 's/^version = "\(.*\)"/\1/p' packages/dns-sd-tauri/Cargo.toml | head -n1)"
           exit $fail
 
-      - name: Build shared TypeScript
-        run: npm run build --workspace @momics/dns-sd-shared
-
-      - name: Typecheck workspace
-        run: npm run typecheck
 
   # ── 1. Publish Rust crate ─────────────────────────────────────────────────────
   # --no-verify: the Tauri plugin links system libraries (glib/gtk/webkit) that
@@ -99,7 +96,7 @@ jobs:
   publish-crates:
     name: Publish Rust crate
     runs-on: ubuntu-latest
-    needs: verify
+    needs: [verify-js, verify-tauri, check-versions]
     if: ${{ github.event.inputs.target == null || github.event.inputs.target == 'all' || github.event.inputs.target == 'crates' }}
     steps:
       - uses: actions/checkout@v4
@@ -126,7 +123,7 @@ jobs:
   publish-npm:
     name: Publish npm packages
     runs-on: ubuntu-latest
-    needs: verify
+    needs: [verify-js, verify-tauri, check-versions]
     if: ${{ github.event.inputs.target == null || github.event.inputs.target == 'all' || github.event.inputs.target == 'npm' }}
     steps:
       - uses: actions/checkout@v4
@@ -167,14 +164,14 @@ jobs:
   publish-jsr:
     name: Publish JSR packages
     runs-on: ubuntu-latest
-    needs: verify
+    needs: [verify-js, verify-tauri, check-versions]
     if: ${{ github.event.inputs.target == null || github.event.inputs.target == 'all' || github.event.inputs.target == 'jsr' }}
     steps:
       - uses: actions/checkout@v4
 
       - uses: denoland/setup-deno@v2
         with:
-          deno-version: v2.x
+          deno-version: v2.9
 
       - name: Publish @momics/dns-sd-shared to JSR
         working-directory: packages/dns-sd-shared

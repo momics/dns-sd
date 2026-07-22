@@ -19,6 +19,7 @@ import {
   ResourceType,
 } from "../wire/types.ts";
 import type { ServiceAnnouncement } from "../types.ts";
+import type { MdnsBrowser } from "./engine.ts";
 import {
   nameKey,
   parseServiceName,
@@ -35,6 +36,16 @@ interface Question {
   name: string[];
   type: ResourceType;
 }
+
+/**
+ * Maximum number of discovered instances a single {@link Browser} will track.
+ * A hostile PTR flood could otherwise grow the `instances` (and, transitively,
+ * `targets`) maps without bound. Once the cap is reached the browser simply
+ * stops accepting *new* instances — a graceful stop, not an eviction engine.
+ * Real networks advertise a handful to a few hundred instances of any one
+ * service type, so 1024 is far above any legitimate deployment.
+ */
+export const MAX_INSTANCES = 1024;
 
 interface InstanceState {
   fullName: string;
@@ -64,7 +75,8 @@ export interface BrowseContext {
   unregister(browser: Browser): void;
 }
 
-export class Browser {
+/** Active browser state machine for one DNS-SD service query. */
+export class Browser implements MdnsBrowser {
   private readonly ctx: BrowseContext;
   private readonly serviceLabels: string[];
   private readonly serviceKey: string;
@@ -240,6 +252,9 @@ export class Browser {
   private discoverInstance(labels: string[]): void {
     const key = nameKey(labels);
     if (this.instances.has(key)) return;
+    // Graceful stop under a PTR flood: once the cap is reached, refuse new
+    // instances rather than letting the map grow without bound (issue #21).
+    if (this.instances.size >= MAX_INSTANCES) return;
     const parsed = parseServiceName(labels);
     const instance: InstanceState = {
       fullName: labels.join("."),
@@ -365,21 +380,59 @@ export class Browser {
       : undefined;
     const host = target ? target.labels.join(".") : null;
     const addresses = target ? Array.from(target.addresses) : [];
-    this.output.push({
-      kind,
+    const base = {
       name: instance.labels[0] ?? instance.fullName,
       fullName: instance.fullName,
       serviceType: instance.serviceType,
       protocol: instance.protocol,
       domain: instance.domain,
       subtypes: instance.subtypes,
-      host: kind === "found" ? null : host,
-      port: kind === "found" ? null : instance.port,
-      addresses: kind === "found" ? [] : addresses,
       txt: instance.txt,
-      isActive: kind !== "removed",
       lastSeenMs: Date.now(),
-    });
+    };
+
+    switch (kind) {
+      case "found":
+        this.output.push({
+          ...base,
+          kind: "found",
+          host: null,
+          port: null,
+          addresses: [],
+          isActive: true,
+        });
+        return;
+      case "resolved":
+        this.output.push({
+          ...base,
+          kind: "resolved",
+          host: host!,
+          port: instance.port!,
+          addresses,
+          isActive: true,
+        });
+        return;
+      case "updated":
+        this.output.push({
+          ...base,
+          kind: "updated",
+          host: host!,
+          port: instance.port!,
+          addresses,
+          isActive: true,
+        });
+        return;
+      case "removed":
+        this.output.push({
+          ...base,
+          kind: "removed",
+          host,
+          port: instance.port,
+          addresses,
+          isActive: false,
+        });
+        return;
+    }
   }
 
   /** Stop the browser and release resources. */
